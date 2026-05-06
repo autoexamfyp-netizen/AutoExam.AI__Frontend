@@ -1,7 +1,12 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { AtSign, GraduationCap, Lock, Sparkles, User, Zap } from "lucide-react"
 import { supabase } from "../lib/supabaseClient"
+import { getEmailConfirmRedirectUrl } from "../auth/authPaths"
+import { dashboardPathForRole, isEmailVerified, resolveRole } from "../auth/roles"
+import { formatAuthError } from "../auth/formatAuthError"
+import PasswordInput from "../components/ui/PasswordInput"
+import { useLoading } from "../hooks/useLoading"
 
 function AuthShowcase() {
   return (
@@ -56,24 +61,31 @@ function AuthShowcase() {
 
 export default function SignupPage() {
   const navigate = useNavigate()
+  const { run } = useLoading()
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
+    confirmPassword: "",
     role: "teacher",
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
+
+  const [flashCode] = useState(() => new URLSearchParams(window.location.search).get("flash"))
+
+  useEffect(() => {
+    if (!flashCode) return
+    navigate("/signup", { replace: true })
+  }, [flashCode, navigate])
 
   const updateField = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
     setError("")
-    setSuccess("")
   }
 
   const validate = () => {
-    if (!formData.name.trim() || !formData.email.trim() || !formData.password.trim()) {
+    if (!formData.name.trim() || !formData.email.trim() || !formData.password.trim() || !formData.confirmPassword.trim()) {
       return "All fields are required."
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
@@ -82,36 +94,36 @@ export default function SignupPage() {
     if (formData.password.length < 8) {
       return "Password must be at least 8 characters."
     }
+    if (formData.password !== formData.confirmPassword) {
+      return "Passwords do not match."
+    }
     return ""
   }
 
   const handleGoogleSignup = async () => {
     setError("")
-    setSuccess("")
 
     if (!import.meta.env.VITE_GOOGLE_CLIENT_ID) {
       setError("Google OAuth is not configured.")
       return
     }
 
-    setLoading(true)
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?role=${formData.role}`,
-      },
-    })
-
-    if (oauthError) {
+    await run(async () => {
+      setLoading(true)
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?role=${formData.role}`,
+        },
+      })
       setLoading(false)
-      setError(oauthError.message)
-    }
+      if (oauthError) setError(oauthError.message)
+    }, "Connecting to Google…")
   }
 
   const handleSignup = async (event) => {
     event.preventDefault()
     setError("")
-    setSuccess("")
 
     const validationError = validate()
     if (validationError) {
@@ -119,27 +131,37 @@ export default function SignupPage() {
       return
     }
 
-    setLoading(true)
-    const { data, error: signupError } = await supabase.auth.signUp({
-      email: formData.email,
-      password: formData.password,
-      options: {
-        data: {
-          full_name: formData.name,
-          role: formData.role,
+    await run(async () => {
+      setLoading(true)
+      const { data, error: signupError } = await supabase.auth.signUp({
+        email: formData.email.trim(),
+        password: formData.password,
+        options: {
+          emailRedirectTo: getEmailConfirmRedirectUrl(),
+          data: {
+            full_name: formData.name.trim(),
+            role: formData.role,
+          },
         },
-      },
-    })
-    setLoading(false)
+      })
+      setLoading(false)
 
-    if (signupError) {
-      setError(signupError.message)
-      return
-    }
+      if (signupError) {
+        setError(formatAuthError(signupError))
+        return
+      }
 
-    const userRole = data.user?.user_metadata?.role || formData.role
-    setSuccess("Account created successfully.")
-    navigate(userRole === "student" ? "/student-dashboard" : "/teacher-dashboard")
+      const newUser = data.user
+      const session = data.session
+
+      if (session && newUser && isEmailVerified(newUser)) {
+        const userRole = resolveRole(newUser) || formData.role
+        navigate(dashboardPathForRole(userRole), { replace: true })
+        return
+      }
+
+      navigate(`/auth/check-email?email=${encodeURIComponent(formData.email.trim())}`, { replace: true })
+    }, "Creating your account…")
   }
 
   return (
@@ -150,6 +172,12 @@ export default function SignupPage() {
         <div className="w-full max-w-[560px]">
           <h2 className="text-4xl font-bold tracking-[-0.6px] text-[#11162e] sm:text-5xl">Create account</h2>
           <p className="mt-2 text-base text-[#7b809a]">Sign up as teacher or student</p>
+
+          {flashCode === "incomplete_profile" ? (
+            <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Your profile needs a role. Create an account or sign in with Google from the sign-up page.
+            </p>
+          ) : null}
 
           <button
             type="button"
@@ -176,6 +204,7 @@ export default function SignupPage() {
                   value={formData.name}
                   onChange={(e) => updateField("name", e.target.value)}
                   placeholder="Your full name"
+                  autoComplete="name"
                   className="h-full w-full border-none bg-transparent text-sm text-[#1b1f36] outline-none"
                 />
               </div>
@@ -190,24 +219,31 @@ export default function SignupPage() {
                   value={formData.email}
                   onChange={(e) => updateField("email", e.target.value)}
                   placeholder="name@institution.edu.pk"
+                  autoComplete="email"
                   className="h-full w-full border-none bg-transparent text-sm text-[#1b1f36] outline-none"
                 />
               </div>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-[#1d233d]">Password</label>
-              <div className="flex h-12 items-center gap-2 rounded-xl border border-[#e3e6ef] bg-white px-3">
-                <Lock className="h-4 w-4 text-[#a2a8bd]" />
-                <input
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => updateField("password", e.target.value)}
-                  placeholder="Minimum 8 characters"
-                  className="h-full w-full border-none bg-transparent text-sm text-[#1b1f36] outline-none"
-                />
-              </div>
-            </div>
+            <PasswordInput
+              label="Password"
+              leftIcon={<Lock />}
+              value={formData.password}
+              onChange={(e) => updateField("password", e.target.value)}
+              placeholder="Minimum 8 characters"
+              autoComplete="new-password"
+              disabled={loading}
+            />
+
+            <PasswordInput
+              label="Confirm password"
+              leftIcon={<Lock />}
+              value={formData.confirmPassword}
+              onChange={(e) => updateField("confirmPassword", e.target.value)}
+              placeholder="Re-enter password"
+              autoComplete="new-password"
+              disabled={loading}
+            />
 
             <div>
               <label className="mb-2 block text-sm font-medium text-[#1d233d]">Role</label>
@@ -222,7 +258,6 @@ export default function SignupPage() {
             </div>
 
             {error ? <p className="text-sm text-red-500">{error}</p> : null}
-            {success ? <p className="text-sm text-green-600">{success}</p> : null}
 
             <button
               type="submit"

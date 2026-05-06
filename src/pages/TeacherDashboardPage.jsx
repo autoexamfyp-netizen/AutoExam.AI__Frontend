@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   AlertTriangle,
@@ -15,7 +15,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react"
-import { supabase } from "../lib/supabaseClient"
+import { useAuth } from "../hooks/useAuth"
 
 const exams = [
   { id: 1, title: "Computer Science Mid-Term", status: "active", students: 72, completion: 84 },
@@ -54,38 +54,12 @@ function getStatusLabel(status) {
 
 export default function TeacherDashboardPage() {
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
+  const { user, signOut } = useAuth()
   const [error, setError] = useState("")
-  const [userName, setUserName] = useState("Professor")
-  const [userEmail, setUserEmail] = useState("")
   const [selectedFilter, setSelectedFilter] = useState("all")
 
-  useEffect(() => {
-    const loadSession = async () => {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (userError || !user) {
-        navigate("/login", { replace: true })
-        return
-      }
-
-      const role = user.user_metadata?.role
-      if (role && role !== "teacher") {
-        navigate("/student-dashboard", { replace: true })
-        return
-      }
-
-      const nameFromMeta = user.user_metadata?.full_name
-      setUserName(nameFromMeta || user.email?.split("@")[0] || "Professor")
-      setUserEmail(user.email || "")
-      setLoading(false)
-    }
-
-    loadSession()
-  }, [navigate])
+  const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Professor"
+  const userEmail = user?.email || ""
 
   const counts = useMemo(() => {
     const active = exams.filter((item) => item.status === "active").length
@@ -113,23 +87,12 @@ export default function TeacherDashboardPage() {
 
   const handleLogout = async () => {
     setError("")
-    const { error: signOutError } = await supabase.auth.signOut()
+    const { error: signOutError } = await signOut()
     if (signOutError) {
       setError("Could not log out right now. Please try again.")
       return
     }
     navigate("/login", { replace: true })
-  }
-
-  if (loading) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-[#f3f5fb] px-6">
-        <div className="rounded-2xl border border-[#e3e6ef] bg-white px-8 py-6 text-center">
-          <h1 className="text-xl font-semibold text-[#141a32]">Loading dashboard...</h1>
-          <p className="mt-2 text-sm text-[#6d7491]">Please wait while we fetch your teacher session.</p>
-        </div>
-      </main>
-    )
   }
 
   return (
