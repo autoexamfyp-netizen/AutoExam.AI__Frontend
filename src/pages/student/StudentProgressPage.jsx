@@ -1,14 +1,6 @@
 import { useEffect, useState } from "react"
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
+import { CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis } from "recharts"
+import StableChartBox from "../../components/ui/StableChartBox"
 import { TrendingUp } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import StatCard from "../../components/student/StatCard"
@@ -79,22 +71,22 @@ export default function StudentProgressPage() {
       <section className="min-w-0 max-w-full rounded-2xl border border-[#e7eaf3] bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-[#151d3a]">Performance over time</h2>
         <p className="text-xs text-[#7f88a6]">Rolling average score by period (mock)</p>
-        <div className="mt-4 h-[260px] w-full min-w-0 max-w-full overflow-x-auto">
-          <div className="h-full w-full min-w-[260px]">
-            <ResponsiveContainer width="100%" height="100%" debounce={50}>
-            <LineChart data={data.performanceOverTime} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#eef1f7" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} domain={[60, "auto"]} />
-              <Tooltip
-                contentStyle={{ borderRadius: 12, border: "1px solid #e7eaf3", fontSize: 12 }}
-                formatter={(v) => [`${v}%`, "Avg score"]}
-              />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line type="monotone" dataKey="avg" name="Avg score" stroke="#6562f1" strokeWidth={2} dot={{ r: 4, fill: "#6562f1" }} />
-            </LineChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="mt-4 w-full min-w-0 max-w-full">
+          <StableChartBox heightPx={260}>
+            {(w, h) => (
+              <LineChart width={w} height={h} data={data.performanceOverTime} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eef1f7" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} domain={[60, "auto"]} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, border: "1px solid #e7eaf3", fontSize: 12 }}
+                  formatter={(v) => [`${v}%`, "Avg score"]}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="avg" name="Avg score" stroke="#6562f1" strokeWidth={2} dot={{ r: 4, fill: "#6562f1" }} />
+              </LineChart>
+            )}
+          </StableChartBox>
         </div>
       </section>
 
@@ -103,18 +95,18 @@ export default function StudentProgressPage() {
         <p className="text-xs text-[#7f88a6]">
           Example: <span className="font-medium text-[#313a58]">{weakTopic.name}</span> — mock series
         </p>
-        <div className="mt-4 w-full min-w-0 max-w-full overflow-x-auto">
-          <div className="h-[220px] w-full min-w-[260px]">
-            <ResponsiveContainer width="100%" height="100%" debounce={50}>
-            <LineChart data={data.weakTopicsTrend.map((p, i) => ({ attempt: `A${i + 1}`, avg: p.avg }))} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#eef1f7" vertical={false} />
-              <XAxis dataKey="attempt" tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} domain={[50, "auto"]} />
-              <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e7eaf3", fontSize: 12 }} />
-              <Line type="monotone" dataKey="avg" stroke="#c89422" strokeWidth={2} dot={{ r: 3, fill: "#c89422" }} name="Topic avg" />
-            </LineChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="mt-4 w-full min-w-0 max-w-full">
+          <StableChartBox heightPx={220}>
+            {(w, h) => (
+              <LineChart width={w} height={h} data={data.weakTopicsTrend.map((p, i) => ({ attempt: `A${i + 1}`, avg: p.avg }))} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eef1f7" vertical={false} />
+                <XAxis dataKey="attempt" tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} domain={[50, "auto"]} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e7eaf3", fontSize: 12 }} />
+                <Line type="monotone" dataKey="avg" stroke="#c89422" strokeWidth={2} dot={{ r: 3, fill: "#c89422" }} name="Topic avg" />
+              </LineChart>
+            )}
+          </StableChartBox>
         </div>
       </section>
 

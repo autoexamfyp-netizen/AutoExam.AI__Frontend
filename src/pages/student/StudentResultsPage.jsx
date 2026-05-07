@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, CartesianGrid, Cell, Tooltip, XAxis, YAxis } from "recharts"
+import StableChartBox from "../../components/ui/StableChartBox"
 import { Award, CheckCircle2, XCircle } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import { fetchStudentResultsMock } from "../../data/studentMockData"
@@ -93,25 +94,25 @@ export default function StudentResultsPage() {
                 </div>
               </div>
 
-              <div className="mt-4 w-full min-w-0 max-w-full overflow-x-auto">
-                <div className="h-[160px] w-full min-w-[240px]">
-                  <ResponsiveContainer width="100%" height="100%" debounce={50}>
-                    <BarChart data={chartData} layout="vertical" margin={{ left: 4, right: 12, top: 4, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#eef1f7" horizontal={false} />
-                    <XAxis type="number" domain={[0, Math.max(r.mcqMax + r.writtenMax, 1)]} tick={{ fontSize: 11, fill: "#8a93ad" }} />
-                    <YAxis type="category" dataKey="name" width={56} tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} />
-                    <Tooltip
-                      formatter={(v, name, props) => [`${v} / ${props.payload.name === "MCQ" ? r.mcqMax : r.writtenMax}`, "Score"]}
-                      contentStyle={{ borderRadius: 12, border: "1px solid #e7eaf3", fontSize: 12 }}
-                    />
-                    <Bar dataKey="score" radius={[0, 6, 6, 0]}>
-                      {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Bar>
+              <div className="mt-4 w-full min-w-0 max-w-full">
+                <StableChartBox heightPx={160}>
+                  {(w, h) => (
+                    <BarChart width={w} height={h} data={chartData} layout="vertical" margin={{ left: 4, right: 12, top: 4, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#eef1f7" horizontal={false} />
+                      <XAxis type="number" domain={[0, Math.max(r.mcqMax + r.writtenMax, 1)]} tick={{ fontSize: 11, fill: "#8a93ad" }} />
+                      <YAxis type="category" dataKey="name" width={56} tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        formatter={(v, name, props) => [`${v} / ${props.payload.name === "MCQ" ? r.mcqMax : r.writtenMax}`, "Score"]}
+                        contentStyle={{ borderRadius: 12, border: "1px solid #e7eaf3", fontSize: 12 }}
+                      />
+                      <Bar dataKey="score" radius={[0, 6, 6, 0]}>
+                        {chartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Bar>
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  )}
+                </StableChartBox>
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[#eef1f7] pt-4 text-sm">

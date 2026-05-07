@@ -1,14 +1,7 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
+import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts"
+import StableChartBox from "../../components/ui/StableChartBox"
 import { AlarmClock, Bell, BookOpenCheck, ClipboardCheck, LineChart, PlayCircle, Target, TrendingUp } from "lucide-react"
 import StatCard from "../../components/student/StatCard"
 import StatusBadge from "../../components/student/StatusBadge"
@@ -120,29 +113,31 @@ export default function StudentDashboardHomePage() {
               </div>
             </div>
           </div>
-          <div className="h-[200px] w-full min-w-0 max-w-full">
-            <ResponsiveContainer width="100%" height="100%" debounce={50}>
-              <AreaChart data={trend} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="scoreFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6562f1" stopOpacity={0.22} />
-                    <stop offset="100%" stopColor="#6562f1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eef1f7" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} domain={[60, "auto"]} />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: 12,
-                    border: "1px solid #e7eaf3",
-                    fontSize: 12,
-                  }}
-                  formatter={(v) => [`${v}%`, "Score"]}
-                />
-                <Area type="monotone" dataKey="score" stroke="#6562f1" strokeWidth={2} fill="url(#scoreFill)" dot={{ r: 3, fill: "#6562f1" }} />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="w-full min-w-0 max-w-full">
+            <StableChartBox heightPx={200}>
+              {(w, h) => (
+                <AreaChart width={w} height={h} data={trend} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="scoreFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#6562f1" stopOpacity={0.22} />
+                      <stop offset="100%" stopColor="#6562f1" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eef1f7" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} domain={[60, "auto"]} />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: 12,
+                      border: "1px solid #e7eaf3",
+                      fontSize: 12,
+                    }}
+                    formatter={(v) => [`${v}%`, "Score"]}
+                  />
+                  <Area type="monotone" dataKey="score" stroke="#6562f1" strokeWidth={2} fill="url(#scoreFill)" dot={{ r: 3, fill: "#6562f1" }} />
+                </AreaChart>
+              )}
+            </StableChartBox>
           </div>
         </div>
 

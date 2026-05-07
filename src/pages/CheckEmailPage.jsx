@@ -132,7 +132,7 @@ export default function CheckEmailPage() {
                 flow="signup"
                 onSuccess={handleOtpSuccess}
                 title="Have a code?"
-                subtitle="Enter the 6-digit code from your email if your project sends OTP (configure Supabase email template with {{ .Token }})."
+                subtitle="Enter the one-time code from your email (Supabase {{ .Token }}; this app expects 8 digits by default — set VITE_OTP_CODE_LENGTH if yours differs)."
               />
             </div>
           ) : null}

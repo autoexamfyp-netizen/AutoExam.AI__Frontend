@@ -1,7 +1,13 @@
 import { supabase } from "../lib/supabaseClient"
 import { getEmailConfirmRedirectUrl, getPasswordResetRedirectUrl } from "./authPaths"
 
-export const OTP_CODE_LENGTH = 6
+/**
+ * Digits expected in the segmented OTP UI. Supabase email `{{ .Token }}` is often **8 digits**
+ * (e.g. recovery/signup); some projects use 6. Override with `VITE_OTP_CODE_LENGTH` in `.env`.
+ */
+const fromEnv = Number.parseInt(import.meta.env.VITE_OTP_CODE_LENGTH ?? "", 10)
+export const OTP_CODE_LENGTH =
+  Number.isFinite(fromEnv) && fromEnv >= 4 && fromEnv <= 12 ? fromEnv : 8
 
 /** @typedef {'signup' | 'recovery' | 'email'} OtpFlow */
 

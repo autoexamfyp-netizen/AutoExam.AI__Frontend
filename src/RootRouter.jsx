@@ -2,7 +2,19 @@ import { Navigate, Route, Routes } from "react-router-dom"
 import App from "./App"
 import LoginPage from "./pages/LoginPage"
 import SignupPage from "./pages/SignupPage"
-import TeacherDashboardPage from "./pages/TeacherDashboardPage"
+import TeacherLayout from "./components/teacher/TeacherLayout"
+import TeacherHomePage from "./pages/teacher/TeacherHomePage"
+import TeacherMaterialsPage from "./pages/teacher/TeacherMaterialsPage"
+import TeacherGenerateExamPage from "./pages/teacher/TeacherGenerateExamPage"
+import TeacherExamReviewPage from "./pages/teacher/TeacherExamReviewPage"
+import TeacherPublishedExamsPage from "./pages/teacher/TeacherPublishedExamsPage"
+import TeacherQuestionBankPage from "./pages/teacher/TeacherQuestionBankPage"
+import TeacherSubmissionsPage from "./pages/teacher/TeacherSubmissionsPage"
+import TeacherEvaluationPage from "./pages/teacher/TeacherEvaluationPage"
+import TeacherAiDetectionPage from "./pages/teacher/TeacherAiDetectionPage"
+import TeacherAnalyticsPage from "./pages/teacher/TeacherAnalyticsPage"
+import TeacherFeedbackPage from "./pages/teacher/TeacherFeedbackPage"
+import TeacherSettingsPage from "./pages/teacher/TeacherSettingsPage"
 import StudentLayout from "./components/student/StudentLayout"
 import StudentDashboardHomePage from "./pages/student/StudentDashboardHomePage"
 import StudentExamsPage from "./pages/student/StudentExamsPage"
@@ -61,10 +73,23 @@ export default function RootRouter() {
         path="/teacher-dashboard"
         element={
           <ProtectedRoute allowedRoles={["teacher"]}>
-            <TeacherDashboardPage />
+            <TeacherLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<TeacherHomePage />} />
+        <Route path="materials" element={<TeacherMaterialsPage />} />
+        <Route path="generate-exam" element={<TeacherGenerateExamPage />} />
+        <Route path="exams/:examId/review" element={<TeacherExamReviewPage />} />
+        <Route path="published-exams" element={<TeacherPublishedExamsPage />} />
+        <Route path="question-bank" element={<TeacherQuestionBankPage />} />
+        <Route path="submissions" element={<TeacherSubmissionsPage />} />
+        <Route path="evaluation" element={<TeacherEvaluationPage />} />
+        <Route path="ai-detection" element={<TeacherAiDetectionPage />} />
+        <Route path="analytics" element={<TeacherAnalyticsPage />} />
+        <Route path="feedback" element={<TeacherFeedbackPage />} />
+        <Route path="settings" element={<TeacherSettingsPage />} />
+      </Route>
       <Route
         path="/student-dashboard"
         element={

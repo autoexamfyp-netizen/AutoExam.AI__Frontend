@@ -1,6 +1,22 @@
 import { useState } from "react"
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
-import { BarChart3, BookOpenCheck, GraduationCap, LayoutDashboard, LogOut, Menu, MessageSquareText, Trophy, X } from "lucide-react"
+import {
+  BarChart3,
+  Bot,
+  FolderOpen,
+  GraduationCap,
+  Inbox,
+  LayoutDashboard,
+  Library,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Send,
+  Settings,
+  Sparkles,
+  Wand2,
+  X,
+} from "lucide-react"
 import { useAuth } from "../../hooks/useAuth"
 
 const navLinkClass = ({ isActive }) =>
@@ -9,22 +25,26 @@ const navLinkClass = ({ isActive }) =>
   }`
 
 const NAV = [
-  { to: "/student-dashboard", end: true, label: "Dashboard", icon: LayoutDashboard },
-  { to: "/student-dashboard/exams", label: "Exams", icon: BookOpenCheck },
-  { to: "/student-dashboard/results", label: "Results", icon: Trophy },
-  { to: "/student-dashboard/feedback", label: "Feedback", icon: MessageSquareText },
-  { to: "/student-dashboard/progress", label: "Progress", icon: BarChart3 },
+  { to: "/teacher-dashboard", end: true, label: "Dashboard", icon: LayoutDashboard },
+  { to: "/teacher-dashboard/materials", label: "Materials", icon: FolderOpen },
+  { to: "/teacher-dashboard/generate-exam", label: "Generate Exam", icon: Wand2 },
+  { to: "/teacher-dashboard/question-bank", label: "Question Bank", icon: Library },
+  { to: "/teacher-dashboard/published-exams", label: "Published Exams", icon: Send },
+  { to: "/teacher-dashboard/submissions", label: "Submissions", icon: Inbox },
+  { to: "/teacher-dashboard/ai-detection", label: "AI Detection", icon: Bot },
+  { to: "/teacher-dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { to: "/teacher-dashboard/feedback", label: "Feedback", icon: MessageSquare },
+  { to: "/teacher-dashboard/settings", label: "Settings", icon: Settings },
 ]
 
-export default function StudentLayout() {
+export default function TeacherLayout() {
   const navigate = useNavigate()
   const { user, signOut } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [error, setError] = useState("")
 
-  const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Student"
+  const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Teacher"
   const userEmail = user?.email || ""
-
   const closeMobile = () => setMobileOpen(false)
 
   const handleLogout = async () => {
@@ -40,25 +60,20 @@ export default function StudentLayout() {
   const sidebar = (
     <>
       <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-[#eef1f7] px-5">
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#ede9ff] text-[#6a55f5]">
-          <GraduationCap className="h-5 w-5" />
+        <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-[#6562f1] to-[#8b7cff] text-white shadow-sm">
+          <Sparkles className="h-4 w-4" />
         </div>
         <span className="text-lg font-semibold tracking-[-0.2px] text-[#121938]">AutoExam.ai</span>
-        <button
-          type="button"
-          className="ml-auto rounded-lg p-2 text-[#596286] lg:hidden"
-          onClick={closeMobile}
-          aria-label="Close menu"
-        >
+        <button type="button" className="ml-auto rounded-lg p-2 text-[#596286] lg:hidden" onClick={closeMobile} aria-label="Close menu">
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-4">
+      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain px-3 py-4">
         {NAV.map(({ to, end, label, icon: Icon }) => (
           <NavLink key={to} to={to} end={end} className={navLinkClass} onClick={closeMobile}>
             <Icon className="h-4 w-4 shrink-0 opacity-90" />
-            {label}
+            <span className="truncate">{label}</span>
           </NavLink>
         ))}
       </nav>
@@ -66,7 +81,7 @@ export default function StudentLayout() {
       <div className="shrink-0 border-t border-[#eef1f7] p-4">
         <div className="rounded-2xl border border-[#e8ebf4] bg-[#fafbff] p-3">
           <div className="mb-3 flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-[#eaf7f2] text-sm font-semibold text-[#2e8f66]">
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-[#ede9ff] text-sm font-semibold text-[#5f4ce6]">
               {userName.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
@@ -119,15 +134,21 @@ export default function StudentLayout() {
                 <Menu className="h-5 w-5" />
               </button>
               <div className="min-w-0">
-                <p className="truncate text-xs font-medium uppercase tracking-wider text-[#9aa3c2]">Student</p>
-                <p className="truncate text-sm font-semibold text-[#151d3a]">Learning workspace</p>
+                <p className="truncate text-xs font-medium uppercase tracking-wider text-[#9aa3c2]">Teacher</p>
+                <p className="truncate text-sm font-semibold text-[#151d3a]">Control center</p>
               </div>
             </div>
-            <div className="hidden items-center gap-2 rounded-full border border-[#e8ebf4] bg-white px-2 py-1 sm:flex">
-              <div className="grid h-8 w-8 place-items-center rounded-full bg-[#eaf7f2] text-xs font-semibold text-[#2e8f66]">
-                {userName.charAt(0).toUpperCase()}
+            <div className="hidden items-center gap-2 sm:flex">
+              <span className="rounded-full border border-[#e8ebf4] bg-white px-3 py-1 text-xs font-medium text-[#5d6580]">
+                <GraduationCap className="mr-1 inline h-3.5 w-3.5 text-[#6562f1]" />
+                AI workspace
+              </span>
+              <div className="flex items-center gap-2 rounded-full border border-[#e8ebf4] bg-white px-2 py-1">
+                <div className="grid h-8 w-8 place-items-center rounded-full bg-[#ede9ff] text-xs font-semibold text-[#5f4ce6]">
+                  {userName.charAt(0).toUpperCase()}
+                </div>
+                <span className="max-w-[120px] truncate pr-2 text-sm font-medium text-[#21294a]">{userName}</span>
               </div>
-              <span className="max-w-[140px] truncate pr-2 text-sm font-medium text-[#21294a]">{userName}</span>
             </div>
           </header>
 
