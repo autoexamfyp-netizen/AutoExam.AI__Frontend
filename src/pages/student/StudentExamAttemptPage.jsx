@@ -3,37 +3,58 @@ import { Link, useNavigate, useParams } from "react-router-dom"
 import { Check, ChevronLeft, ChevronRight, Cloud, Loader2, Save, Send } from "lucide-react"
 import ConfirmDialog from "../../components/student/ConfirmDialog"
 import EmptyState from "../../components/student/EmptyState"
-import { getExamQuestionsForAttempt, getStudentExamById } from "../../data/studentMockData"
+import { saveExamDraft, startOrResumeExam, submitExam } from "../../services/studentExamService"
 
 const AUTO_SAVE_MS = 25000
 
 function formatDuration(totalSeconds) {
-  const m = Math.floor(totalSeconds / 60)
-  const s = totalSeconds % 60
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+  const s = Math.max(0, Math.floor(totalSeconds))
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`
 }
 
-function isAnswered(question, value) {
-  if (value == null || value === "") return false
-  if (question.type === "mcq") return typeof value === "number"
-  return String(value).trim().length > 0
+function isAnswered(q, val) {
+  if (!val) return false
+  if (q.question_type === "mcq") return val.selected != null && String(val.selected).length > 0
+  return String(val.text || "").trim().length > 0
 }
 
-/**
- * @param {{ examId: string }} props
- */
-function StudentExamAttemptContent({ examId }) {
+function draftToAnswersMap(raw) {
+  const out = {}
+  if (!raw || typeof raw !== "object") return out
+  for (const [k, v] of Object.entries(raw)) {
+    if (k.startsWith("__")) continue
+    if (!v || typeof v !== "object") continue
+    out[k] = { text: v.text ?? "", selected: v.selected ?? null }
+  }
+  return out
+}
+
+function answersToPayload(map) {
+  const payload = {}
+  for (const [qid, v] of Object.entries(map)) {
+    const text = typeof v.text === "string" ? v.text.trim() : ""
+    const sel = v.selected != null && v.selected !== "" ? String(v.selected).trim() : ""
+    if (!text && !sel) continue
+    payload[qid] = {}
+    if (text) payload[qid].text = text
+    if (sel) payload[qid].selected = sel
+  }
+  return payload
+}
+
+function StudentExamAttemptContent({ publishedId }) {
   const navigate = useNavigate()
-
-  const exam = useMemo(() => getStudentExamById(examId), [examId])
-  const questions = useMemo(() => getExamQuestionsForAttempt(examId), [examId])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+  const [submission, setSubmission] = useState(null)
+  const [published, setPublished] = useState(null)
+  const [questions, setQuestions] = useState([])
 
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answers, setAnswers] = useState({})
-  const [secondsLeft, setSecondsLeft] = useState(() => {
-    const e = getStudentExamById(examId)
-    return e ? e.durationMinutes * 60 : 0
-  })
+  const [secondsLeft, setSecondsLeft] = useState(0)
   const [saveState, setSaveState] = useState("idle")
   const [lastSavedAt, setLastSavedAt] = useState(null)
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false)
@@ -42,26 +63,83 @@ function StudentExamAttemptContent({ examId }) {
 
   const timerRef = useRef(null)
   const autoSaveRef = useRef(null)
-
-  const current = questions[currentIndex]
-
-  const simulateSave = useCallback(async () => {
-    setSaveState("saving")
-    await new Promise((r) => setTimeout(r, 600))
-    setSaveState("saved")
-    setLastSavedAt(new Date())
-    window.setTimeout(() => setSaveState("idle"), 2000)
-  }, [])
+  const submissionIdRef = useRef("")
+  const answersRef = useRef({})
+  const secondsRef = useRef(0)
+  const autoSubmitRef = useRef(true)
+  const autoSubmitFiredRef = useRef(false)
 
   useEffect(() => {
-    if (!exam || submitted) return
+    answersRef.current = answers
+  }, [answers])
+  useEffect(() => {
+    secondsRef.current = secondsLeft
+  }, [secondsLeft])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      setLoadError("")
+      try {
+        const out = await startOrResumeExam(publishedId)
+        if (cancelled) return
+        const sub = out.submission
+        const pub = out.published
+        const qs = out.questions || []
+        setSubmission(sub)
+        setPublished(pub)
+        setQuestions(qs)
+        submissionIdRef.current = sub.id
+        autoSubmitRef.current = pub.auto_submit_on_timeout !== false
+
+        const meta = sub.answers_data?.__meta || {}
+        const total = Number(meta.totalSeconds) || (Number(pub.duration_minutes) || 60) * 60
+        const rem =
+          typeof meta.secondsRemaining === "number" && meta.secondsRemaining >= 0
+            ? Math.floor(meta.secondsRemaining)
+            : total
+        setSecondsLeft(rem)
+
+        setAnswers(draftToAnswersMap(sub.answers_data))
+      } catch (e) {
+        if (!cancelled) {
+          console.error("❌ Timer sync issue:", e)
+          setLoadError(e?.message || "Could not open this exam.")
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [publishedId])
+
+  const flushSave = useCallback(async () => {
+    const sid = submissionIdRef.current
+    if (!sid || submitted) return
+    setSaveState("saving")
+    try {
+      await saveExamDraft(sid, {
+        answers: answersToPayload(answersRef.current),
+        secondsRemaining: secondsRef.current,
+      })
+      setSaveState("saved")
+      setLastSavedAt(new Date())
+      window.setTimeout(() => setSaveState("idle"), 2000)
+    } catch (e) {
+      console.error("❌ Submission save failed:", e)
+      setSaveState("idle")
+    }
+  }, [submitted])
+
+  useEffect(() => {
+    if (loading || !submission || submitted) return
 
     timerRef.current = window.setInterval(() => {
       setSecondsLeft((s) => {
-        if (s <= 1) {
-          if (timerRef.current) window.clearInterval(timerRef.current)
-          return 0
-        }
+        if (s <= 0) return 0
         return s - 1
       })
     }, 1000)
@@ -69,47 +147,69 @@ function StudentExamAttemptContent({ examId }) {
     return () => {
       if (timerRef.current) window.clearInterval(timerRef.current)
     }
-  }, [exam, submitted])
+  }, [loading, submission, submitted])
 
   useEffect(() => {
-    if (!exam || submitted || secondsLeft !== 0) return
+    if (loading || !submission || submitted || secondsLeft > 0) return
+    if (!autoSubmitRef.current) return
+    if (autoSubmitFiredRef.current) return
+    autoSubmitFiredRef.current = true
     let cancelled = false
     ;(async () => {
       setSubmitting(true)
-      await new Promise((r) => setTimeout(r, 800))
-      if (cancelled) return
-      setSubmitting(false)
-      setSubmitted(true)
-      navigate("/student-dashboard/results", { replace: true, state: { flash: "Time is up — exam auto-submitted (demo)." } })
+      try {
+        await submitExam(submissionIdRef.current, { secondsRemaining: 0 })
+        if (cancelled) return
+        setSubmitted(true)
+        navigate("/student-dashboard/results", { replace: true, state: { flash: "Time is up — exam submitted." } })
+      } catch (e) {
+        console.error("❌ Submission save failed:", e)
+        autoSubmitFiredRef.current = false
+        if (!cancelled) setSubmitting(false)
+      }
     })()
     return () => {
       cancelled = true
     }
-  }, [exam, submitted, secondsLeft, navigate])
+  }, [loading, submission, submitted, secondsLeft, navigate])
 
   useEffect(() => {
-    if (!exam || submitted) return
+    if (loading || !submission || submitted) return
     autoSaveRef.current = window.setInterval(() => {
-      simulateSave()
+      flushSave()
     }, AUTO_SAVE_MS)
     return () => {
       if (autoSaveRef.current) window.clearInterval(autoSaveRef.current)
     }
-  }, [exam, submitted, simulateSave])
+  }, [loading, submission, submitted, flushSave])
 
   useEffect(() => {
     const handler = (e) => {
       if (submitted) return
       e.preventDefault()
-      e.returnValue = ""
+      e.returnValue = "Your progress is being saved."
     }
     window.addEventListener("beforeunload", handler)
     return () => window.removeEventListener("beforeunload", handler)
   }, [submitted])
 
-  const setAnswer = (qid, value) => {
-    setAnswers((prev) => ({ ...prev, [qid]: value }))
+  const prevIndexRef = useRef(null)
+  useEffect(() => {
+    if (loading || submitted) return
+    if (prevIndexRef.current !== null && prevIndexRef.current !== currentIndex) {
+      flushSave()
+    }
+    prevIndexRef.current = currentIndex
+  }, [currentIndex, loading, submitted, flushSave])
+
+  const setAnswerField = (qid, partial) => {
+    setAnswers((prev) => ({
+      ...prev,
+      [qid]: { text: "", selected: null, ...(prev[qid] || {}), ...partial },
+    }))
   }
+
+  const current = questions[currentIndex]
 
   const goPrev = () => setCurrentIndex((i) => Math.max(0, i - 1))
   const goNext = () => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))
@@ -117,37 +217,36 @@ function StudentExamAttemptContent({ examId }) {
   const handleSubmit = async () => {
     setConfirmSubmitOpen(false)
     setSubmitting(true)
-    await new Promise((r) => setTimeout(r, 900))
-    setSubmitting(false)
-    setSubmitted(true)
-    navigate("/student-dashboard/results", { replace: true, state: { flash: "Exam submitted successfully (demo)." } })
+    try {
+      await flushSave()
+      await submitExam(submissionIdRef.current, { secondsRemaining: secondsRef.current })
+      setSubmitted(true)
+      navigate("/student-dashboard/results", { replace: true, state: { flash: "Exam submitted successfully." } })
+    } catch (e) {
+      console.error("❌ Submission save failed:", e)
+      setSubmitting(false)
+    }
   }
 
-  if (!exam) {
+  const durationLabel = useMemo(() => published?.duration_minutes ?? "—", [published])
+
+  if (loading) {
     return (
-      <EmptyState
-        title="Exam not found"
-        description="This attempt link is invalid or the exam was removed."
-        action={
-          <Link to="/student-dashboard/exams" className="text-sm font-semibold text-[#6e63f6]">
-            Back to exams
-          </Link>
-        }
-      />
+      <div className="flex min-h-[240px] flex-col items-center justify-center gap-2 text-sm text-[#7d86a5]">
+        <Loader2 className="h-6 w-6 animate-spin text-[#6562f1]" />
+        Loading attempt…
+      </div>
     )
   }
 
-  if (exam.status !== "available") {
+  if (loadError || !submission || !questions.length) {
     return (
       <EmptyState
-        title="Exam not available"
-        description="This assessment is not open for attempts right now."
+        title="Cannot open exam"
+        description={loadError || "This exam is not available."}
         action={
-          <Link
-            to="/student-dashboard/exams"
-            className="inline-flex h-10 items-center rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white"
-          >
-            Go to exams
+          <Link to="/student-dashboard/exams" className="text-sm font-semibold text-[#6e63f6]">
+            Back to exams
           </Link>
         }
       />
@@ -168,7 +267,7 @@ function StudentExamAttemptContent({ examId }) {
     ) : lastSavedAt ? (
       <span className="text-[#8a93ad]">Last saved {lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
     ) : (
-      <span className="text-[#8a93ad]">Draft sync · auto every {AUTO_SAVE_MS / 1000}s</span>
+      <span className="text-[#8a93ad]">Auto-save every {AUTO_SAVE_MS / 1000}s</span>
     )
 
   return (
@@ -203,7 +302,7 @@ function StudentExamAttemptContent({ examId }) {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => simulateSave()}
+              onClick={() => flushSave()}
               disabled={submitting || submitted}
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm font-semibold text-[#313a58] transition hover:bg-[#fafbff] disabled:opacity-50"
             >
@@ -222,7 +321,7 @@ function StudentExamAttemptContent({ examId }) {
           </div>
         </div>
         <p className="mx-auto mt-2 min-w-0 max-w-[1200px] break-words text-xs text-[#99a0b7]">
-          Demo attempt · Timer starts at {exam.durationMinutes} min · Do not refresh the page during the exam
+          {published?.title} · {durationLabel} min allowed · Closing {published?.end_time ? new Date(published.end_time).toLocaleString() : ""}
         </p>
       </header>
 
@@ -234,15 +333,18 @@ function StudentExamAttemptContent({ examId }) {
                 <span className="rounded-lg bg-[#f4f6fb] px-2 py-0.5 font-medium text-[#313a58]">
                   Question {currentIndex + 1} of {questions.length}
                 </span>
-                <span className="rounded-lg bg-[#f1efff] px-2 py-0.5 font-medium text-[#5f4ce6]">{current.type.toUpperCase()}</span>
+                <span className="rounded-lg bg-[#f1efff] px-2 py-0.5 font-medium text-[#5f4ce6]">
+                  {(current.question_type || "").toUpperCase()}
+                </span>
                 <span>{current.marks} marks</span>
               </div>
               <h2 className="text-base font-semibold leading-snug text-[#151d3a] sm:text-lg">{current.prompt}</h2>
 
-              {current.type === "mcq" ? (
+              {current.question_type === "mcq" && Array.isArray(current.options) ? (
                 <ul className="mt-5 space-y-2">
-                  {current.options.map((opt, idx) => {
-                    const selected = answers[current.id] === idx
+                  {current.options.map((opt) => {
+                    const val = answers[current.id]?.selected
+                    const selected = val === opt
                     return (
                       <li key={opt}>
                         <label
@@ -255,7 +357,7 @@ function StudentExamAttemptContent({ examId }) {
                             name={`q-${current.id}`}
                             className="h-4 w-4 accent-[#6562f1]"
                             checked={selected}
-                            onChange={() => setAnswer(current.id, idx)}
+                            onChange={() => setAnswerField(current.id, { selected: opt })}
                           />
                           <span className="text-[#1a2341]">{opt}</span>
                         </label>
@@ -265,22 +367,22 @@ function StudentExamAttemptContent({ examId }) {
                 </ul>
               ) : null}
 
-              {current.type === "short" ? (
+              {current.question_type === "short" ? (
                 <textarea
                   className="mt-5 min-h-[100px] w-full resize-y rounded-xl border border-[#e3e6ef] bg-[#fafbff] px-3 py-2.5 text-sm text-[#1b1f36] outline-none transition focus:border-[#6562f1] focus:ring-2 focus:ring-[#6562f1]/20"
                   placeholder="Type your answer…"
-                  value={answers[current.id] ?? ""}
-                  onChange={(e) => setAnswer(current.id, e.target.value)}
+                  value={answers[current.id]?.text ?? ""}
+                  onChange={(e) => setAnswerField(current.id, { text: e.target.value })}
                   rows={4}
                 />
               ) : null}
 
-              {current.type === "essay" ? (
+              {current.question_type === "essay" ? (
                 <textarea
                   className="mt-5 min-h-[180px] w-full resize-y rounded-xl border border-[#e3e6ef] bg-[#fafbff] px-3 py-2.5 text-sm text-[#1b1f36] outline-none transition focus:border-[#6562f1] focus:ring-2 focus:ring-[#6562f1]/20"
                   placeholder="Write a structured response…"
-                  value={answers[current.id] ?? ""}
-                  onChange={(e) => setAnswer(current.id, e.target.value)}
+                  value={answers[current.id]?.text ?? ""}
+                  onChange={(e) => setAnswerField(current.id, { text: e.target.value })}
                   rows={10}
                 />
               ) : null}
@@ -338,9 +440,7 @@ function StudentExamAttemptContent({ examId }) {
                 )
               })}
             </div>
-            <p className="mt-4 text-xs text-[#8a93ad]">
-              Green = answered · Purple = current. Your progress is saved automatically.
-            </p>
+            <p className="mt-4 text-xs text-[#8a93ad]">Green = answered · Purple = current. Progress syncs automatically.</p>
           </div>
         </aside>
       </div>
@@ -349,7 +449,7 @@ function StudentExamAttemptContent({ examId }) {
 }
 
 export default function StudentExamAttemptPage() {
-  const { examId } = useParams()
-  const id = examId ?? ""
-  return <StudentExamAttemptContent key={id} examId={id} />
+  const { publishedId } = useParams()
+  const id = publishedId ?? ""
+  return <StudentExamAttemptContent key={id} publishedId={id} />
 }

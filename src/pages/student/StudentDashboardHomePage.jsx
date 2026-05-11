@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts"
 import StableChartBox from "../../components/ui/StableChartBox"
@@ -6,7 +6,7 @@ import { AlarmClock, Bell, BookOpenCheck, ClipboardCheck, LineChart, PlayCircle,
 import StatCard from "../../components/student/StatCard"
 import StatusBadge from "../../components/student/StatusBadge"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
-import { fetchStudentDashboardMock } from "../../data/studentMockData"
+import { fetchStudentDashboard } from "../../services/dashboardService"
 
 function NotificationRow({ item }) {
   const tone =
@@ -32,23 +32,45 @@ function NotificationRow({ item }) {
 
 export default function StudentDashboardHomePage() {
   const [loading, setLoading] = useState(true)
-  const [bundle, setBundle] = useState(null)
+  const [error, setError] = useState("")
+  const [bundle, setBundle] = useState({
+    stats: { overallAverage: 0, examsAttempted: 0, pendingExams: 0, lastScore: 0 },
+    trend: [],
+    recentPerformances: [],
+    notifications: [],
+    activeExams: [],
+  })
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const data = await fetchStudentDashboardMock()
-      if (!cancelled) {
-        setBundle(data)
-        setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
+  const load = useCallback(async () => {
+    try {
+      const out = await fetchStudentDashboard()
+      setBundle({
+        stats: out?.stats || { overallAverage: 0, examsAttempted: 0, pendingExams: 0, lastScore: 0 },
+        trend: out?.trend || [],
+        recentPerformances: out?.recentPerformances || [],
+        notifications: out?.notifications || [],
+        activeExams: out?.activeExams || [],
+      })
+      setError("")
+    } catch (e) {
+      console.error("❌ Dashboard sync issue:", e)
+      setError(e?.message || "Could not load dashboard")
+    } finally {
+      setLoading(false)
     }
   }, [])
 
-  if (loading || !bundle) {
+  useEffect(() => {
+    load()
+    const id = window.setInterval(() => {
+      load()
+    }, 30000)
+    return () => {
+      window.clearInterval(id)
+    }
+  }, [load])
+
+  if (loading) {
     return (
       <div className="min-w-0 max-w-full space-y-6">
         <SectionSkeleton rows={2} />
@@ -72,6 +94,7 @@ export default function StudentDashboardHomePage() {
       <div className="min-w-0 max-w-full">
         <h1 className="text-xl font-semibold tracking-[-0.3px] text-[#151d3a] sm:text-2xl">Dashboard</h1>
         <p className="mt-1 break-words text-sm text-[#7d86a5]">Overview of your exams and performance</p>
+        {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -145,7 +168,9 @@ export default function StudentDashboardHomePage() {
           <h2 className="text-sm font-semibold text-[#151d3a]">Last 5 exams</h2>
           <p className="text-xs text-[#7f88a6]">Scaled to percentage</p>
           <ul className="mt-4 space-y-3">
-            {recentPerformances.map((row) => {
+            {recentPerformances.length === 0 ? (
+              <li className="rounded-xl bg-[#fafbff] px-3 py-2.5 text-sm text-[#7f88a6]">No completed exams yet.</li>
+            ) : recentPerformances.map((row) => {
               const pct = Math.round((row.score / row.maxScore) * 100)
               return (
                 <li key={row.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#fafbff] px-3 py-2.5">
@@ -173,43 +198,66 @@ export default function StudentDashboardHomePage() {
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {activeExams.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-[#e0e4ef] bg-white py-10 text-center text-sm text-[#7f88a6]">No active exams</p>
+            <p className="rounded-2xl border border-dashed border-[#e0e4ef] bg-white py-10 text-center text-sm text-[#7f88a6]">No active or upcoming exams</p>
           ) : (
-            activeExams.map((exam) => (
-              <article
-                key={exam.id}
-                className="flex flex-col rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-[0_1px_3px_rgba(27,39,94,0.04)] transition hover:shadow-[0_8px_24px_rgba(27,39,94,0.06)]"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="break-words font-semibold text-[#171f3c]">{exam.title}</p>
-                    <p className="text-xs text-[#7f88a6]">{exam.code}</p>
+            activeExams.map((row) => {
+              const p = row.published
+              const publishedId = p.id
+              const title = p.title
+              const subj = p.category?.title
+              const canContinue = row.studentStatus === "in_progress" && row.windowStatus !== "expired"
+              const canStart = row.studentStatus === "active" && row.windowStatus === "active"
+              const isUpcoming = row.studentStatus === "upcoming" || row.windowStatus === "upcoming"
+
+              return (
+                <article
+                  key={publishedId}
+                  className="flex flex-col rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-[0_1px_3px_rgba(27,39,94,0.04)] transition hover:shadow-[0_8px_24px_rgba(27,39,94,0.06)]"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="break-words font-semibold text-[#171f3c]">{title}</p>
+                      <p className="text-xs text-[#7f88a6]">{subj || "Scheduled exam"}</p>
+                    </div>
+                    <StatusBadge
+                      status={isUpcoming ? "upcoming" : canContinue || canStart ? "available" : "expired"}
+                      label={canContinue ? "In progress" : undefined}
+                    />
                   </div>
-                  <StatusBadge status={exam.status === "available" ? "available" : "upcoming"} />
-                </div>
-                <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#697391] sm:text-sm">
-                  <div className="flex items-center gap-1.5">
-                    <BookOpenCheck className="h-3.5 w-3.5 shrink-0" />
-                    <span>{exam.durationMinutes} min</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <AlarmClock className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{formatDeadline(exam.deadline)}</span>
-                  </div>
-                </dl>
-                {exam.status === "available" ? (
-                  <Link
-                    to={`/student-dashboard/exams/${exam.id}/attempt`}
-                    className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-sm font-semibold text-white transition hover:bg-[#5a56e2]"
-                  >
-                    <PlayCircle className="h-4 w-4" />
-                    Start exam
-                  </Link>
-                ) : (
-                  <p className="mt-4 text-center text-xs font-medium text-[#8a93ad]">Opens closer to the scheduled time</p>
-                )}
-              </article>
-            ))
+                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#697391] sm:text-sm">
+                    <div className="flex items-center gap-1.5">
+                      <BookOpenCheck className="h-3.5 w-3.5 shrink-0" />
+                      <span>{p.duration_minutes} min</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <AlarmClock className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{formatDeadline(p.end_time)}</span>
+                    </div>
+                  </dl>
+                  {canContinue ? (
+                    <Link
+                      to={`/student-dashboard/exams/${publishedId}/attempt`}
+                      className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-sm font-semibold text-white transition hover:bg-[#5a56e2]"
+                    >
+                      <PlayCircle className="h-4 w-4" />
+                      Continue exam
+                    </Link>
+                  ) : canStart ? (
+                    <Link
+                      to={`/student-dashboard/exams/${publishedId}/attempt`}
+                      className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-sm font-semibold text-white transition hover:bg-[#5a56e2]"
+                    >
+                      <PlayCircle className="h-4 w-4" />
+                      Start exam
+                    </Link>
+                  ) : (
+                    <p className="mt-4 text-center text-xs font-medium text-[#8a93ad]">
+                      {isUpcoming ? "Opens at the scheduled time" : "Not available to start right now"}
+                    </p>
+                  )}
+                </article>
+              )
+            })
           )}
         </div>
       </section>
@@ -217,7 +265,7 @@ export default function StudentDashboardHomePage() {
       <section>
         <h2 className="mb-3 text-sm font-semibold text-[#151d3a]">Notifications</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {notifications.map((n) => (
+          {(notifications.length ? notifications : [{ id: "n0", tone: "info", title: "No notifications yet", body: "New activity appears here.", when: "—" }]).map((n) => (
             <NotificationRow key={n.id} item={n} />
           ))}
         </div>

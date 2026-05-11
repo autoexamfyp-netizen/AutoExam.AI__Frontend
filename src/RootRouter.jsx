@@ -100,7 +100,7 @@ export default function RootRouter() {
       >
         <Route index element={<StudentDashboardHomePage />} />
         <Route path="exams" element={<StudentExamsPage />} />
-        <Route path="exams/:examId/attempt" element={<StudentExamAttemptPage />} />
+        <Route path="exams/:publishedId/attempt" element={<StudentExamAttemptPage />} />
         <Route path="results" element={<StudentResultsPage />} />
         <Route path="feedback" element={<StudentFeedbackPage />} />
         <Route path="progress" element={<StudentProgressPage />} />
