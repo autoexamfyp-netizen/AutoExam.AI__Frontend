@@ -123,8 +123,8 @@ export default function TeacherLayout() {
         </aside>
 
         <div className="box-border flex min-h-screen w-full min-w-0 max-w-full flex-col lg:pl-[248px]">
-          <header className="fixed inset-x-0 top-0 z-30 flex h-16 w-full max-w-full min-w-0 items-center justify-between gap-3 border-b border-[#e7eaf3] bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:px-6 lg:left-[248px]">
-            <div className="flex min-w-0 items-center gap-2">
+          <header className="fixed inset-x-0 top-0 z-30 box-border flex h-16 w-full min-w-0 items-center justify-between gap-3 border-b border-[#e7eaf3] bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:px-6 lg:left-[248px] lg:w-[calc(100%-248px)] lg:max-w-[calc(100%-248px)]">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <button
                 type="button"
                 className="rounded-xl border border-[#e8ebf4] bg-white p-2 text-[#596286] lg:hidden"
@@ -138,7 +138,7 @@ export default function TeacherLayout() {
                 <p className="truncate text-sm font-semibold text-[#151d3a]">Control center</p>
               </div>
             </div>
-            <div className="hidden items-center gap-2 sm:flex">
+            <div className="hidden min-w-0 items-center gap-2 sm:flex">
               <span className="rounded-full border border-[#e8ebf4] bg-white px-3 py-1 text-xs font-medium text-[#5d6580]">
                 <GraduationCap className="mr-1 inline h-3.5 w-3.5 text-[#6562f1]" />
                 AI workspace

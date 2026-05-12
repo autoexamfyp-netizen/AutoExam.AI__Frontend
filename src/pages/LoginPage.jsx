@@ -29,12 +29,12 @@ function AuthShowcase() {
       <div className="absolute -bottom-24 right-0 h-96 w-96 rounded-full bg-[#822eff]/20 blur-3xl" />
 
       <div className="relative z-10">
-        <div className="mb-10 flex items-center gap-3">
+        <Link to="/" className="mb-10 inline-flex items-center gap-3 rounded-xl transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#6f63ff]">
             <GraduationCap className="h-4 w-4" />
           </div>
-          <span className="text-[34px] font-semibold tracking-[-0.3px]">AutoExam.ai</span>
-        </div>
+          <span className="text-[34px] font-semibold tracking-[-0.3px] cursor-pointer">AutoExam.ai</span>
+        </Link>
 
         <h1 className="max-w-[340px] text-5xl font-bold leading-[1.05] tracking-[-1px]">
           Smarter Exams. Fairer Feedback.

@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom"
+import { Route, Routes } from "react-router-dom"
 import App from "./App"
 import LoginPage from "./pages/LoginPage"
 import SignupPage from "./pages/SignupPage"
@@ -29,6 +29,7 @@ import VerifyEmailRequiredPage from "./pages/VerifyEmailRequiredPage"
 import ForgotPasswordPage from "./pages/ForgotPasswordPage"
 import ResetPasswordPage from "./pages/ResetPasswordPage"
 import OtpVerifyPage from "./pages/OtpVerifyPage"
+import NotFoundPage from "./pages/NotFoundPage"
 import ProtectedRoute from "./components/auth/ProtectedRoute"
 import GuestRoute from "./components/auth/GuestRoute"
 
@@ -106,7 +107,7 @@ export default function RootRouter() {
         <Route path="progress" element={<StudentProgressPage />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }

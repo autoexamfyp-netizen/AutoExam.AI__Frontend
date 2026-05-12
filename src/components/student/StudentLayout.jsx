@@ -108,8 +108,8 @@ export default function StudentLayout() {
         </aside>
 
         <div className="box-border flex min-h-screen w-full min-w-0 max-w-full flex-col lg:pl-[248px]">
-          <header className="fixed inset-x-0 top-0 z-30 flex h-16 w-full max-w-full min-w-0 items-center justify-between gap-3 border-b border-[#e7eaf3] bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:px-6 lg:left-[248px]">
-            <div className="flex min-w-0 items-center gap-2">
+          <header className="fixed inset-x-0 top-0 z-30 box-border flex h-16 w-full min-w-0 items-center justify-between gap-3 border-b border-[#e7eaf3] bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:px-6 lg:left-[248px] lg:w-[calc(100%-248px)] lg:max-w-[calc(100%-248px)]">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <button
                 type="button"
                 className="rounded-xl border border-[#e8ebf4] bg-white p-2 text-[#596286] lg:hidden"
@@ -123,7 +123,7 @@ export default function StudentLayout() {
                 <p className="truncate text-sm font-semibold text-[#151d3a]">Learning workspace</p>
               </div>
             </div>
-            <div className="hidden items-center gap-2 rounded-full border border-[#e8ebf4] bg-white px-2 py-1 sm:flex">
+            <div className="hidden min-w-0 items-center gap-2 rounded-full border border-[#e8ebf4] bg-white px-2 py-1 sm:flex">
               <div className="grid h-8 w-8 place-items-center rounded-full bg-[#eaf7f2] text-xs font-semibold text-[#2e8f66]">
                 {userName.charAt(0).toUpperCase()}
               </div>

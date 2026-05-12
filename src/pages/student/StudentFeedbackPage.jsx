@@ -1,7 +1,120 @@
 import { useEffect, useState } from "react"
-import { Bot, Sparkles, Target, ThumbsDown, ThumbsUp, TriangleAlert } from "lucide-react"
+import { MessageSquareText, Sparkles, Target, ThumbsDown, ThumbsUp, TriangleAlert } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
-import { fetchStudentFeedbackMock } from "../../data/studentMockData"
+import { fetchStudentDashboard } from "../../services/dashboardService"
+import { fetchSubmissionDetail } from "../../services/teacherSubmissionService"
+
+function formatReportDate(value) {
+  try {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+  } catch {
+    return value || ""
+  }
+}
+
+function shortPrompt(prompt = "") {
+  const clean = String(prompt).replace(/\s+/g, " ").trim()
+  return clean.length > 90 ? `${clean.slice(0, 87)}...` : clean
+}
+
+function topicLabel(answer, index) {
+  return answer.question?.topic?.trim() || answer.question?.question_type || `Question ${index + 1}`
+}
+
+function buildFeedbackFromSubmission(examEntry, detail) {
+  const submission = examEntry.submission || {}
+  const answers = Array.isArray(detail?.answers) ? detail.answers : []
+  const totalScore = Number(submission.total_score || 0)
+  const maxScore = Number(submission.max_score || 0)
+  const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0
+
+  const topicMap = new Map()
+  const topicExamples = new Map()
+
+  answers.forEach((answer, index) => {
+    const name = topicLabel(answer, index)
+    const marks = Number(answer.marks_obtained ?? 0)
+    const maxMarks = Number(answer.max_marks ?? answer.question?.marks ?? 0)
+    const current = topicMap.get(name) || { score: 0, max: 0, count: 0 }
+    topicMap.set(name, {
+      score: current.score + marks,
+      max: current.max + maxMarks,
+      count: current.count + 1,
+    })
+    if (!topicExamples.has(name) && answer.question?.prompt) {
+      topicExamples.set(name, shortPrompt(answer.question.prompt))
+    }
+  })
+
+  const topics = Array.from(topicMap.entries())
+    .map(([name, value]) => ({
+      name,
+      scorePercent: value.max > 0 ? Math.round((value.score / value.max) * 100) : 0,
+      score: value.score,
+      max: value.max,
+      count: value.count,
+    }))
+    .sort((a, b) => b.scorePercent - a.scorePercent)
+
+  const strongest = [...topics].slice(0, 2)
+  const weakest = [...topics].sort((a, b) => a.scorePercent - b.scorePercent).slice(0, 2)
+
+  const strengths = strongest.length
+    ? strongest.map((topic) => {
+        const prompt = topicExamples.get(topic.name)
+        return prompt
+          ? `${topic.name} is your strongest area at ${topic.scorePercent}% across ${topic.count} answer${topic.count === 1 ? "" : "s"}. Key question: ${prompt}.`
+          : `${topic.name} is your strongest area at ${topic.scorePercent}% across ${topic.count} answer${topic.count === 1 ? "" : "s"}.`
+      })
+    : [
+        `You scored ${percentage}% overall on ${examEntry.published?.title || "this exam"}.`,
+      ]
+
+  const weaknesses = weakest.length
+    ? weakest.map((topic) => {
+        const prompt = topicExamples.get(topic.name)
+        return prompt
+          ? `${topic.name} needs another pass at ${topic.scorePercent}%. Revisit: ${prompt}.`
+          : `${topic.name} needs another pass at ${topic.scorePercent}%.`
+      })
+    : ["No weak topic was identified from the available answers."]
+
+  const recommendations = []
+  weakest.forEach((topic) => {
+    const prompt = topicExamples.get(topic.name)
+    if (prompt) {
+      recommendations.push(`Rework the question on ${topic.name}: ${prompt}`)
+    } else {
+      recommendations.push(`Review ${topic.name} and retake a short practice set focused on that area.`)
+    }
+  })
+
+  const evaluatorRemarks = answers
+    .map((answer) => answer.evaluator_remarks?.trim())
+    .filter(Boolean)
+  const teacherRemarks = submission.teacher_remarks?.trim()
+
+  return {
+    examTitle: examEntry.published?.title || "Untitled exam",
+    generatedAt: submission.submitted_at || submission.updated_at || examEntry.published?.end_time,
+    topics,
+    strengths,
+    weaknesses,
+    recommendations: recommendations.length
+      ? recommendations
+      : ["Keep working through the same topic mix and compare the next attempt with this report."],
+    notes: teacherRemarks || evaluatorRemarks[0] || `Scored ${totalScore}/${maxScore || 0} (${percentage}%).`,
+    notesDetails:
+      evaluatorRemarks.length > 1
+        ? evaluatorRemarks.slice(1, 3)
+        : teacherRemarks
+          ? [teacherRemarks]
+          : [],
+    summaryLabel: maxScore > 0 ? `${totalScore}/${maxScore}` : `${totalScore}`,
+    percentage,
+    submittedAt: submission.submitted_at || submission.updated_at,
+  }
+}
 
 function TopicBar({ name, scorePercent }) {
   return (
@@ -23,15 +136,39 @@ function TopicBar({ name, scorePercent }) {
 export default function StudentFeedbackPage() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(null)
+  const [error, setError] = useState("")
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const fb = await fetchStudentFeedbackMock()
-      if (!cancelled) {
-        setData(fb)
-        setLoading(false)
+      try {
+        const dashboard = await fetchStudentDashboard()
+        const exams = Array.isArray(dashboard?.exams) ? dashboard.exams : []
+        const graded = exams
+          .filter((entry) => entry.submission && ["submitted", "evaluated", "late"].includes(entry.submission.status))
+          .sort((a, b) => {
+            const ta = new Date(a.submission.submitted_at || a.submission.updated_at).getTime()
+            const tb = new Date(b.submission.submitted_at || b.submission.updated_at).getTime()
+            return tb - ta
+          })
+
+        if (!graded.length) {
+          throw new Error("No graded submission found yet.")
+        }
+
+        const latest = graded[0]
+        const detail = await fetchSubmissionDetail(latest.submission.id)
+        if (!cancelled) {
+          setData(buildFeedbackFromSubmission(latest, detail))
+          setError("")
+        }
+      } catch (fetchError) {
+        if (!cancelled) {
+          setError(fetchError?.message || "Could not load feedback.")
+          setData(null)
+        }
       }
+      if (!cancelled) setLoading(false)
     })()
     return () => {
       cancelled = true
@@ -41,13 +178,11 @@ export default function StudentFeedbackPage() {
   if (loading || !data) {
     return (
       <div className="min-w-0 max-w-full">
+        {error ? <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{error}</div> : null}
         <SectionSkeleton rows={6} />
       </div>
     )
   }
-
-  const ai = data.aiDetection
-  const probPct = Math.round(ai.probability * 100)
 
   return (
     <div className="min-w-0 max-w-full space-y-8">
@@ -56,7 +191,7 @@ export default function StudentFeedbackPage() {
         <p className="mt-1 break-words text-sm text-[#7d86a5]">
           Insights for <span className="font-medium text-[#313a58]">{data.examTitle}</span>
         </p>
-        <p className="mt-1 break-words text-xs text-[#99a0b7]">Report generated {new Date(data.generatedAt).toLocaleString()}</p>
+        <p className="mt-1 break-words text-xs text-[#99a0b7]">Report generated {formatReportDate(data.generatedAt)}</p>
       </div>
 
       <section className="min-w-0 max-w-full rounded-2xl border border-[#e7eaf3] bg-white p-5 shadow-sm sm:p-6">
@@ -115,46 +250,31 @@ export default function StudentFeedbackPage() {
       </section>
 
       <section
-        className={`min-w-0 max-w-full rounded-2xl border p-5 shadow-sm sm:p-6 ${
-          ai.flagged ? "border-amber-200 bg-amber-50/50" : "border-[#e7eaf3] bg-white"
-        }`}
+        className="min-w-0 max-w-full rounded-2xl border border-[#e7eaf3] bg-white p-5 shadow-sm sm:p-6"
       >
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#f1efff] text-[#5f4ce6]">
-            <Bot className="h-5 w-5" />
+            <MessageSquareText className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-semibold text-[#151d3a]">AI detection report</h2>
-            <p className="break-words text-xs text-[#7f88a6]">Model-estimated likelihood of AI-generated responses</p>
-          </div>
-          {ai.flagged ? (
-            <span className="ml-auto rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-amber-800">
-              Flagged
-            </span>
-          ) : (
-            <span className="ml-auto rounded-full bg-[#e8fbf3] px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-[#1f9d67]">
-              Clear
-            </span>
-          )}
-        </div>
-
-        <div className="mt-5 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="min-w-0 flex-1">
-            <div className="flex justify-between text-sm">
-              <span className="text-[#5d6580]">AI probability</span>
-              <span className="font-semibold tabular-nums text-[#151d3a]">{probPct}%</span>
-            </div>
-            <div className="mt-2 h-3 overflow-hidden rounded-full bg-[#eef1f7]">
-              <div
-                className={`h-full rounded-full transition-all ${ai.flagged ? "bg-amber-500" : "bg-[#6562f1]"}`}
-                style={{ width: `${probPct}%` }}
-              />
-            </div>
+            <h2 className="text-sm font-semibold text-[#151d3a]">Grader notes</h2>
+            <p className="break-words text-xs text-[#7f88a6]">Live notes pulled from the teacher review and answer remarks</p>
           </div>
         </div>
 
-        <p className="mt-4 break-words text-sm leading-relaxed text-[#5d6580]">{ai.label}</p>
-        <p className="mt-2 break-words text-xs text-[#8a93ad]">{ai.notes}</p>
+        <div className="mt-5 rounded-xl border border-[#eef1f7] bg-[#f8f9fd] p-4 text-sm leading-relaxed text-[#5d6580]">
+          {data.notes}
+        </div>
+        {data.notesDetails.length ? (
+          <ul className="mt-3 space-y-2 text-sm text-[#5d6580]">
+            {data.notesDetails.map((note, index) => (
+              <li key={index} className="flex min-w-0 gap-2 rounded-xl bg-[#f6f7fb] px-3 py-2">
+                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#6562f1]" />
+                <span className="min-w-0 break-words">{note}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
     </div>
   )

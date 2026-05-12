@@ -4,7 +4,68 @@ import { Bar, BarChart, CartesianGrid, Cell, Tooltip, XAxis, YAxis } from "recha
 import StableChartBox from "../../components/ui/StableChartBox"
 import { Award, CheckCircle2, XCircle } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
-import { fetchStudentResultsMock } from "../../data/studentMockData"
+import { fetchStudentDashboard } from "../../services/dashboardService"
+import { fetchSubmissionDetail } from "../../services/teacherSubmissionService"
+
+function formatAttemptedAt(value) {
+  try {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+  } catch {
+    return value || ""
+  }
+}
+
+function toResultCard(examEntry, detail) {
+  const submission = examEntry.submission || {}
+  const answers = Array.isArray(detail?.answers) ? detail.answers : []
+  const totalScore = Number(submission.total_score || 0)
+  const maxScore = Number(submission.max_score || 0)
+  const scorePct = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0
+
+  const buckets = answers.reduce(
+    (acc, answer) => {
+      const type = answer.question?.question_type
+      const marks = Number(answer.marks_obtained ?? 0)
+      const maxMarks = Number(answer.max_marks ?? answer.question?.marks ?? 0)
+      if (type === "mcq") {
+        acc.mcqScore += marks
+        acc.mcqMax += maxMarks
+      } else {
+        acc.writtenScore += marks
+        acc.writtenMax += maxMarks
+      }
+      return acc
+    },
+    { mcqScore: 0, mcqMax: 0, writtenScore: 0, writtenMax: 0 },
+  )
+
+  if (answers.length === 0 && maxScore > 0) {
+    const fallbackMcqMax = Math.round(maxScore * 0.4)
+    buckets.mcqMax = fallbackMcqMax
+    buckets.writtenMax = maxScore - fallbackMcqMax
+    const totalKnown = Number(submission.total_score || 0)
+    buckets.mcqScore = Math.min(fallbackMcqMax, totalKnown)
+    buckets.writtenScore = Math.max(0, totalKnown - buckets.mcqScore)
+  }
+
+  return {
+    id: submission.id || examEntry.published?.id,
+    examTitle: examEntry.published?.title || "Untitled exam",
+    attemptedAt: submission.submitted_at || submission.updated_at || examEntry.published?.end_time,
+    totalScore,
+    maxScore,
+    percentage: scorePct,
+    passed: maxScore > 0 ? scorePct >= 50 : totalScore > 0,
+    mcqScore: buckets.mcqScore,
+    mcqMax: buckets.mcqMax,
+    writtenScore: buckets.writtenScore,
+    writtenMax: buckets.writtenMax,
+    summary:
+      detail?.submission?.teacher_remarks ||
+      detail?.answers?.find((a) => typeof a.evaluator_remarks === "string" && a.evaluator_remarks.trim())?.evaluator_remarks ||
+      (submission.status === "evaluated" ? "Your attempt has been graded." : "Your attempt was submitted and scored.") ,
+  }
+}
 
 export default function StudentResultsPage() {
   const location = useLocation()
@@ -12,14 +73,44 @@ export default function StudentResultsPage() {
 
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState([])
+  const [error, setError] = useState("")
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const data = await fetchStudentResultsMock()
-      if (!cancelled) {
-        setRows(data)
-        setLoading(false)
+      try {
+        const out = await fetchStudentDashboard()
+        const exams = Array.isArray(out?.exams) ? out.exams : []
+        const completed = exams.filter((entry) => entry.submission && ["submitted", "evaluated", "late"].includes(entry.submission.status))
+
+        const details = await Promise.all(
+          completed.map(async (entry) => {
+            const submissionId = entry.submission?.id
+            if (!submissionId) return null
+            try {
+              return await fetchSubmissionDetail(submissionId)
+            } catch (detailError) {
+              console.warn("⚠️ Could not load submission detail:", detailError?.message)
+              return null
+            }
+          }),
+        )
+
+        if (!cancelled) {
+          const cards = completed
+            .map((entry, index) => toResultCard(entry, details[index]))
+            .sort((a, b) => new Date(b.attemptedAt).getTime() - new Date(a.attemptedAt).getTime())
+          setRows(cards)
+          setError("")
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          console.error("❌ Failed to load student results:", loadError)
+          setError(loadError?.message || "Could not load results.")
+          setRows([])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     })()
     return () => {
@@ -44,6 +135,7 @@ export default function StudentResultsPage() {
       <div className="min-w-0 max-w-full">
         <h1 className="text-xl font-semibold tracking-[-0.3px] text-[#151d3a] sm:text-2xl">Results</h1>
         <p className="mt-1 break-words text-sm text-[#7d86a5]">Graded attempts and score breakdowns</p>
+        {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
