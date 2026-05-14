@@ -1,23 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import {
   AlertCircle,
+  CheckSquare,
   Folder,
   Inbox,
   Layers,
   ListChecks,
+  Loader2,
   RefreshCw,
   Search,
   Sparkles,
+  Trash2,
+  X,
 } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import ConfirmDialog from "../../components/student/ConfirmDialog"
+import RenameDialog from "../../components/ui/RenameDialog"
 import QuestionList from "../../components/questions/QuestionList"
 import GeneratedPaperCard from "../../components/questions/GeneratedPaperCard"
 import ExamQuestionsModal from "../../components/questions/ExamQuestionsModal"
 import { fetchCategories } from "../../services/categoryService"
 import {
   deleteQuestion,
+  deleteQuestions,
   fetchQuestionBank,
   updateQuestion,
 } from "../../services/questionService"
@@ -41,7 +47,11 @@ function classNames(...xs) {
 }
 
 export default function TeacherQuestionBankPage() {
-  const [tab, setTab] = useState(TAB.PAPERS)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const isGeneratedExamsRoute = location.pathname.endsWith("/exams")
+  // The Question Bank route is a single focused list of saved questions —
+  // grouped papers are only relevant on the "Generated Exams" route.
   const [activeSubject, setActiveSubject] = useState(ALL_ID)
 
   const [loading, setLoading] = useState(true)
@@ -57,7 +67,15 @@ export default function TeacherQuestionBankPage() {
 
   const [openExamId, setOpenExamId] = useState(null)
   const [pendingDeleteQ, setPendingDeleteQ] = useState(null)
+  const [pendingBulkDelete, setPendingBulkDelete] = useState(false)
   const [pendingDeleteExam, setPendingDeleteExam] = useState(null)
+  const [pendingRenameExam, setPendingRenameExam] = useState(null)
+  const [editingQuestion, setEditingQuestion] = useState(null)
+  const [editForm, setEditForm] = useState(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState(() => new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [renameBusy, setRenameBusy] = useState(false)
   const [toast, setToast] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -73,23 +91,29 @@ export default function TeacherQuestionBankPage() {
       setLoading(true)
       setError("")
       try {
-        console.log("📂 Loading subject-wise question bank...")
+        console.log("📂 Loading", isGeneratedExamsRoute ? "generated papers" : "question bank")
         const [g, q, c] = await Promise.all([
-          fetchExamsGrouped().catch((e) => {
-            console.warn("⚠️ Grouped exams failed:", e?.message)
-            return []
-          }),
-          fetchQuestionBank().catch((e) => {
-            console.warn("⚠️ Question bank failed:", e?.message)
-            return []
-          }),
+          // Only the Generated Exams view needs the grouped papers list.
+          isGeneratedExamsRoute
+            ? fetchExamsGrouped().catch((e) => {
+                console.warn("⚠️ Grouped exams failed:", e?.message)
+                return []
+              })
+            : Promise.resolve([]),
+          // Only the Question Bank view needs the standalone questions.
+          isGeneratedExamsRoute
+            ? Promise.resolve([])
+            : fetchQuestionBank().catch((e) => {
+                console.warn("⚠️ Question bank failed:", e?.message)
+                return []
+              }),
           fetchCategories().catch(() => []),
         ])
         if (cancelled) return
         setGroups(g)
         setQuestions(q)
         setCategories(c)
-        console.log("✅ Question bank loaded successfully")
+        console.log("✅ Data loaded")
       } catch (e) {
         if (!cancelled) setError(e?.message || "Could not load question bank.")
       } finally {
@@ -99,7 +123,7 @@ export default function TeacherQuestionBankPage() {
     return () => {
       cancelled = true
     }
-  }, [refreshKey])
+  }, [refreshKey, isGeneratedExamsRoute])
 
   // Subject rail derived from categories + groups (so we always show subjects
   // that have papers even if `categories` lookup is empty).
@@ -171,34 +195,78 @@ export default function TeacherQuestionBankPage() {
     })
   }, [questions, activeSubject, filterDifficulty, filterType, query])
 
+  const visibleQuestionIds = useMemo(
+    () => filteredQuestions.map((q) => q.id),
+    [filteredQuestions],
+  )
+
+  const selectedVisibleCount = useMemo(
+    () => visibleQuestionIds.filter((id) => selectedQuestionIds.has(id)).length,
+    [selectedQuestionIds, visibleQuestionIds],
+  )
+
+  // Each route owns one focused view — no in-page tab switching.
+  const activeTab = isGeneratedExamsRoute ? TAB.PAPERS : TAB.QUESTIONS
+
   // ---------- ACTIONS ----------
 
-  const onToggleFavorite = async (question) => {
-    try {
-      const updated = await updateQuestion(question.id, { favorite: !question.favorite })
-      setQuestions((curr) => curr.map((x) => (x.id === updated.id ? updated : x)))
-    } catch (e) {
-      showToast(e?.message || "Update failed")
-    }
+  const toggleQuestionSelect = (question) => {
+    setSelectedQuestionIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(question.id)) next.delete(question.id)
+      else next.add(question.id)
+      return next
+    })
   }
 
   const onEditQuestion = (question) => {
-    const nextPrompt = window.prompt("Question text", question.prompt)
-    if (nextPrompt === null || nextPrompt === question.prompt) return
-    const nextAnswer = window.prompt("Model answer / key", question.model_answer ?? "")
-    if (nextAnswer === null) return
-    ;(async () => {
-      try {
-        const updated = await updateQuestion(question.id, {
-          prompt: nextPrompt,
-          model_answer: nextAnswer,
-        })
-        setQuestions((curr) => curr.map((x) => (x.id === updated.id ? updated : x)))
-        showToast("Saved changes")
-      } catch (e) {
-        showToast(e?.message || "Save failed")
-      }
-    })()
+    setEditingQuestion(question)
+    setEditForm({
+      prompt: question.prompt || "",
+      model_answer: question.model_answer || "",
+      question_type: question.question_type || "short",
+      difficulty: question.difficulty || "medium",
+      marks: Number(question.marks) || 2,
+      topic: question.topic || "",
+      category_id: question.category_id || "",
+      optionsText: Array.isArray(question.options) ? question.options.join("\n") : "",
+    })
+  }
+
+  const onSaveQuestionEdit = async (e) => {
+    e.preventDefault()
+    if (!editingQuestion || !editForm || editSaving) return
+    if (!editForm.prompt.trim()) {
+      showToast("Question text is required")
+      return
+    }
+    setEditSaving(true)
+    try {
+      const updated = await updateQuestion(editingQuestion.id, {
+        prompt: editForm.prompt.trim(),
+        model_answer: editForm.model_answer.trim() || null,
+        question_type: editForm.question_type,
+        difficulty: editForm.difficulty,
+        marks: Number(editForm.marks) || 1,
+        topic: editForm.topic.trim() || null,
+        category_id: editForm.category_id || null,
+        options:
+          editForm.question_type === "mcq"
+            ? editForm.optionsText
+                .split("\n")
+                .map((x) => x.trim())
+                .filter(Boolean)
+            : null,
+      })
+      setQuestions((curr) => curr.map((x) => (x.id === updated.id ? updated : x)))
+      setEditingQuestion(null)
+      setEditForm(null)
+      showToast("Question updated")
+    } catch (err) {
+      showToast(err?.message || "Save failed")
+    } finally {
+      setEditSaving(false)
+    }
   }
 
   const onConfirmDeleteQuestion = async () => {
@@ -208,26 +276,57 @@ export default function TeacherQuestionBankPage() {
     try {
       await deleteQuestion(id)
       setQuestions((curr) => curr.filter((x) => x.id !== id))
+      setSelectedQuestionIds((prev) => {
+        if (!prev.has(id)) return prev
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
       showToast("Question removed")
     } catch (e) {
       showToast(e?.message || "Delete failed")
     }
   }
 
-  const onRenameExam = async (exam) => {
-    const next = window.prompt("Rename paper", exam.title)
-    if (!next || next === exam.title) return
+  const onConfirmBulkDelete = async () => {
+    const ids = Array.from(selectedQuestionIds)
+    if (!ids.length || bulkDeleting) return
+    setBulkDeleting(true)
     try {
-      const updated = await renameExam(exam.id, next.trim())
+      await deleteQuestions(ids)
+      setQuestions((curr) => curr.filter((x) => !selectedQuestionIds.has(x.id)))
+      setSelectedQuestionIds(new Set())
+      setPendingBulkDelete(false)
+      showToast(`${ids.length} question${ids.length === 1 ? "" : "s"} deleted`)
+    } catch (e) {
+      showToast(e?.message || "Bulk delete failed")
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
+  const onRenameExam = async (exam) => {
+    setPendingRenameExam(exam)
+  }
+
+  const onConfirmRenameExam = async (nextTitle) => {
+    if (!pendingRenameExam || renameBusy) return
+    setRenameBusy(true)
+    try {
+      const updated = await renameExam(pendingRenameExam.id, nextTitle)
       setGroups((prev) =>
         prev.map((g) => ({
           ...g,
           exams: g.exams.map((e) => (e.id === updated.id ? { ...e, ...updated } : e)),
         })),
       )
+      setPendingRenameExam(null)
       showToast("Renamed")
     } catch (e) {
       showToast(e?.message || "Rename failed")
+      throw e
+    } finally {
+      setRenameBusy(false)
     }
   }
 
@@ -275,9 +374,13 @@ export default function TeacherQuestionBankPage() {
     <div className="min-w-0 max-w-full space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#151d3a] sm:text-2xl">Question bank</h1>
+          <h1 className="text-xl font-semibold text-[#151d3a] sm:text-2xl">
+            {isGeneratedExamsRoute ? "Previously generated" : "Question bank"}
+          </h1>
           <p className="mt-1 text-sm text-[#7d86a5]">
-            Subject-wise generated papers and reusable questions.
+            {isGeneratedExamsRoute
+              ? "Open older papers for review or use them as inspiration."
+              : "All saved questions — filter by subject to focus on one topic."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -314,6 +417,22 @@ export default function TeacherQuestionBankPage() {
         </div>
       ) : null}
 
+      {isGeneratedExamsRoute ? (
+        <div className="rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#151d3a]">Previously generated papers</p>
+              <p className="mt-1 text-xs text-[#7f88a6]">
+                Review, rename, duplicate, or delete saved exam drafts from one focused list.
+              </p>
+            </div>
+            <div className="rounded-xl bg-[#f1efff] px-3 py-2 text-xs font-semibold text-[#5f4ce6]">
+              {totalPapers} paper{totalPapers === 1 ? "" : "s"}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         {/* SUBJECT SIDEBAR */}
         <aside className="rounded-2xl border border-[#e7eaf3] bg-white p-3 shadow-sm lg:col-span-3">
@@ -324,33 +443,46 @@ export default function TeacherQuestionBankPage() {
             <SubjectItem
               icon={Layers}
               label="All subjects"
-              count={totalPapers + questions.length}
+              count={isGeneratedExamsRoute ? totalPapers : questions.length}
               active={activeSubject === ALL_ID}
               onClick={() => setActiveSubject(ALL_ID)}
             />
             <SubjectItem
               icon={Inbox}
               label="Uncategorized"
-              count={uncategorizedPapers + questions.filter((q) => !q.category_id).length}
+              count={
+                isGeneratedExamsRoute
+                  ? uncategorizedPapers
+                  : questions.filter((q) => !q.category_id).length
+              }
               active={activeSubject === UNCAT_ID}
               onClick={() => setActiveSubject(UNCAT_ID)}
             />
             <div className="my-2 border-t border-[#eef1f7]" />
             {subjects
-              .filter((s) => s.id !== UNCAT_ID)
+              .filter((s) => {
+                if (s.id === UNCAT_ID) return false
+                return isGeneratedExamsRoute ? s.paperCount > 0 : s.questionCount > 0
+              })
               .map((s) => (
                 <SubjectItem
                   key={s.id}
                   icon={Folder}
                   label={s.title}
-                  count={s.paperCount + s.questionCount}
+                  count={isGeneratedExamsRoute ? s.paperCount : s.questionCount}
                   active={activeSubject === s.id}
                   onClick={() => setActiveSubject(s.id)}
                 />
               ))}
-            {subjects.length === 0 && !loading ? (
+            {!loading && (
+              isGeneratedExamsRoute
+                ? totalPapers === 0
+                : questions.length === 0
+            ) ? (
               <p className="rounded-lg bg-[#fafbff] px-3 py-3 text-center text-xs text-[#7f88a6]">
-                Generate a paper to see subjects appear here.
+                {isGeneratedExamsRoute
+                  ? "Generate a paper to see subjects appear here."
+                  : "Save questions from a generated exam to fill your bank."}
               </p>
             ) : null}
           </nav>
@@ -359,24 +491,24 @@ export default function TeacherQuestionBankPage() {
         {/* MAIN AREA */}
         <section className="min-w-0 space-y-4 lg:col-span-9">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-xl border border-[#e3e6ef] bg-white p-0.5">
-              <TabBtn active={tab === TAB.PAPERS} onClick={() => setTab(TAB.PAPERS)}>
-                Generated papers
-              </TabBtn>
-              <TabBtn active={tab === TAB.QUESTIONS} onClick={() => setTab(TAB.QUESTIONS)}>
-                All questions
-              </TabBtn>
-            </div>
+            {!isGeneratedExamsRoute ? (
+              <div className="inline-flex items-center gap-2 rounded-xl border border-[#e3e6ef] bg-white px-3 py-2 text-xs font-semibold text-[#151d3a]">
+                <ListChecks className="h-3.5 w-3.5 text-[#6e63f6]" />
+                {activeSubject === ALL_ID
+                  ? `All questions · ${filteredQuestions.length}`
+                  : `${subjects.find((s) => s.id === activeSubject)?.title || "Subject"} · ${filteredQuestions.length}`}
+              </div>
+            ) : null}
             <div className="relative ml-auto min-w-[200px] flex-1 sm:flex-none">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9aa3c2]" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={tab === TAB.PAPERS ? "Search papers…" : "Search questions…"}
+                placeholder={activeTab === TAB.PAPERS ? "Search generated exams..." : "Search questions..."}
                 className="w-full rounded-xl border border-[#e3e6ef] bg-white py-2 pl-8 pr-3 text-sm focus:border-[#6562f1] focus:outline-none"
               />
             </div>
-            {tab === TAB.QUESTIONS ? (
+            {activeTab === TAB.QUESTIONS ? (
               <>
                 <select
                   className="rounded-xl border border-[#e3e6ef] bg-white px-3 py-2 text-sm"
@@ -398,19 +530,65 @@ export default function TeacherQuestionBankPage() {
                   <option value="short">Short</option>
                   <option value="essay">Essay</option>
                 </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedQuestionIds((prev) => {
+                      const next = new Set(prev)
+                      visibleQuestionIds.forEach((id) => next.add(id))
+                      return next
+                    })
+                  }}
+                  disabled={!visibleQuestionIds.length}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#e3e6ef] bg-white px-3 text-xs font-semibold text-[#313a58] hover:bg-[#fafbff] disabled:opacity-60"
+                >
+                  <CheckSquare className="h-3.5 w-3.5" />
+                  Select visible
+                </button>
+                {selectedQuestionIds.size > 0 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedQuestionIds(new Set())}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#e3e6ef] bg-white px-3 text-xs font-semibold text-[#313a58] hover:bg-[#fafbff]"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Clear ({selectedQuestionIds.size})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingBulkDelete(true)}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#fbd8d8] bg-white px-3 text-xs font-semibold text-[#c94a4a] hover:bg-red-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete selected
+                    </button>
+                  </>
+                ) : null}
               </>
             ) : null}
           </div>
 
+          {activeTab === TAB.QUESTIONS && selectedQuestionIds.size > 0 ? (
+            <div className="rounded-xl border border-[#e7eaf3] bg-white px-3 py-2 text-xs text-[#5d6580] shadow-sm">
+              <span className="font-semibold text-[#151d3a]">{selectedQuestionIds.size}</span> selected
+              {visibleQuestionIds.length ? (
+                <span> · {selectedVisibleCount} selected in the current filtered view</span>
+              ) : null}
+            </div>
+          ) : null}
+
           {loading ? (
             <SectionSkeleton rows={4} />
-          ) : tab === TAB.PAPERS ? (
+          ) : activeTab === TAB.PAPERS ? (
             <PapersView
               groups={filteredGroups}
               activeSubject={activeSubject}
+              reviewMode={isGeneratedExamsRoute}
               onView={(exam) => {
                 console.log("📄 Opening generated paper:", exam.title)
-                setOpenExamId(exam.id)
+                if (isGeneratedExamsRoute) navigate(`/teacher-dashboard/exams/${exam.id}/review`)
+                else setOpenExamId(exam.id)
               }}
               onRename={onRenameExam}
               onDuplicate={onDuplicateExam}
@@ -420,9 +598,10 @@ export default function TeacherQuestionBankPage() {
             <QuestionList
               questions={filteredQuestions}
               emptyMessage="No questions match your filters. Try a different subject or generate new ones."
-              onToggleFavorite={onToggleFavorite}
               onEdit={onEditQuestion}
               onDelete={setPendingDeleteQ}
+              selectedIds={selectedQuestionIds}
+              onToggleSelect={toggleQuestionSelect}
             />
           )}
         </section>
@@ -434,16 +613,54 @@ export default function TeacherQuestionBankPage() {
         onClose={() => setOpenExamId(null)}
         onEditQuestion={onEditQuestion}
         onDeleteQuestion={setPendingDeleteQ}
-        onToggleFavorite={onToggleFavorite}
+      />
+
+      <QuestionEditDialog
+        open={Boolean(editingQuestion && editForm)}
+        form={editForm}
+        categories={categories}
+        saving={editSaving}
+        onChange={setEditForm}
+        onSubmit={onSaveQuestionEdit}
+        onClose={() => {
+          if (editSaving) return
+          setEditingQuestion(null)
+          setEditForm(null)
+        }}
+      />
+      <RenameDialog
+        open={Boolean(pendingRenameExam)}
+        title="Rename generated exam"
+        label="Exam title"
+        helper="Use a clear title so this paper is easy to find later."
+        initialValue={pendingRenameExam?.title || ""}
+        confirmLabel="Save title"
+        onConfirm={onConfirmRenameExam}
+        onCancel={() => !renameBusy && setPendingRenameExam(null)}
       />
 
       <ConfirmDialog
         open={Boolean(pendingDeleteQ)}
         title="Delete question?"
         message={pendingDeleteQ ? "This removes the item from your bank. Exams that already linked it stay intact." : ""}
-        confirmLabel="Delete"
+        destructive
+        confirmLabel="Delete question"
+        cancelLabel="Keep"
         onConfirm={onConfirmDeleteQuestion}
         onCancel={() => setPendingDeleteQ(null)}
+      />
+      <ConfirmDialog
+        open={pendingBulkDelete}
+        title="Delete selected questions?"
+        destructive
+        busy={bulkDeleting}
+        message={`${selectedQuestionIds.size} selected question${
+          selectedQuestionIds.size === 1 ? "" : "s"
+        } will be removed from your question bank. Existing exam papers may lose links if they referenced these rows.`}
+        confirmLabel="Delete selected"
+        cancelLabel="Keep"
+        onConfirm={onConfirmBulkDelete}
+        onCancel={() => !bulkDeleting && setPendingBulkDelete(false)}
       />
       <ConfirmDialog
         open={Boolean(pendingDeleteExam)}
@@ -453,7 +670,9 @@ export default function TeacherQuestionBankPage() {
             ? `“${pendingDeleteExam.title}” will be removed permanently. The underlying questions stay in your bank.`
             : ""
         }
-        confirmLabel="Delete"
+        destructive
+        confirmLabel="Delete paper"
+        cancelLabel="Keep"
         onConfirm={onConfirmDeleteExam}
         onCancel={() => setPendingDeleteExam(null)}
       />
@@ -464,6 +683,169 @@ export default function TeacherQuestionBankPage() {
 // =============================================================================
 // Subcomponents
 // =============================================================================
+
+function QuestionEditDialog({ open, form, categories, saving, onChange, onSubmit, onClose }) {
+  if (!open || !form) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-end justify-center overflow-y-auto overscroll-contain sm:items-center sm:p-4"
+      role="presentation"
+    >
+      <button
+        type="button"
+        aria-label="Close edit question"
+        onClick={saving ? undefined : onClose}
+        className="fixed inset-0 bg-[#0f1730]/40 backdrop-blur-[2px]"
+      />
+      <form
+        onSubmit={onSubmit}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="question-edit-title"
+        className="relative z-10 flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-[#e7eaf3] bg-white shadow-[0_-8px_40px_rgba(15,23,48,0.12)] sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:shadow-[0_20px_60px_rgba(15,23,48,0.15)]"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-[#eef1f7] p-5">
+          <div>
+            <h2 id="question-edit-title" className="text-lg font-semibold text-[#151d3a]">
+              Edit question
+            </h2>
+            <p className="mt-1 text-xs text-[#7f88a6]">
+              Update question text, answer key, metadata, and MCQ options in one place.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={saving ? undefined : onClose}
+            className="rounded-lg p-2 text-[#596286] hover:bg-[#f6f7fc]"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-sm">
+              <span className="text-[#5d6580]">Type</span>
+              <select
+                value={form.question_type}
+                onChange={(e) => onChange((f) => ({ ...f, question_type: e.target.value }))}
+                className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm outline-none focus:border-[#6562f1]"
+              >
+                <option value="mcq">MCQ</option>
+                <option value="short">Short</option>
+                <option value="essay">Essay</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="text-[#5d6580]">Difficulty</span>
+              <select
+                value={form.difficulty}
+                onChange={(e) => onChange((f) => ({ ...f, difficulty: e.target.value }))}
+                className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm outline-none focus:border-[#6562f1]"
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="text-[#5d6580]">Marks</span>
+              <input
+                type="number"
+                min={1}
+                value={form.marks}
+                onChange={(e) => onChange((f) => ({ ...f, marks: Number(e.target.value) }))}
+                className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="text-[#5d6580]">Subject</span>
+              <select
+                value={form.category_id}
+                onChange={(e) => onChange((f) => ({ ...f, category_id: e.target.value }))}
+                className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm outline-none focus:border-[#6562f1]"
+              >
+                <option value="">Uncategorized</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="block text-sm">
+            <span className="text-[#5d6580]">Topic</span>
+            <input
+              value={form.topic}
+              onChange={(e) => onChange((f) => ({ ...f, topic: e.target.value }))}
+              className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
+              placeholder="Optional topic label"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="text-[#5d6580]">Question text</span>
+            <textarea
+              rows={4}
+              value={form.prompt}
+              onChange={(e) => onChange((f) => ({ ...f, prompt: e.target.value }))}
+              className="mt-1 w-full resize-y rounded-xl border border-[#e3e6ef] px-3 py-2 text-sm outline-none focus:border-[#6562f1]"
+              required
+            />
+          </label>
+
+          {form.question_type === "mcq" ? (
+            <label className="block text-sm">
+              <span className="text-[#5d6580]">MCQ options</span>
+              <textarea
+                rows={5}
+                value={form.optionsText}
+                onChange={(e) => onChange((f) => ({ ...f, optionsText: e.target.value }))}
+                className="mt-1 w-full resize-y rounded-xl border border-[#e3e6ef] px-3 py-2 font-mono text-xs outline-none focus:border-[#6562f1]"
+                placeholder={"One option per line\nOption A\nOption B\nOption C"}
+              />
+              <span className="mt-1 block text-xs text-[#8a93ad]">Each line becomes one numbered option.</span>
+            </label>
+          ) : null}
+
+          <label className="block text-sm">
+            <span className="text-[#5d6580]">Model answer / key</span>
+            <textarea
+              rows={4}
+              value={form.model_answer}
+              onChange={(e) => onChange((f) => ({ ...f, model_answer: e.target.value }))}
+              className="mt-1 w-full resize-y rounded-xl border border-[#e3e6ef] px-3 py-2 text-sm outline-none focus:border-[#6562f1]"
+              placeholder="Expected answer, correct option, rubric, or marking guide."
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-[#eef1f7] p-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={saving ? undefined : onClose}
+            disabled={saving}
+            className="h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-4 text-sm font-semibold text-[#313a58] disabled:opacity-60 sm:w-auto"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !form.prompt.trim()}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {saving ? "Saving..." : "Save changes"}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
 
 function SubjectItem({ icon: Icon, label, count, active, onClick }) {
   return (
@@ -489,29 +871,16 @@ function SubjectItem({ icon: Icon, label, count, active, onClick }) {
   )
 }
 
-function TabBtn({ active, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={classNames(
-        "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-        active ? "bg-[#f1efff] text-[#5f4ce6]" : "text-[#5d6580] hover:bg-[#f6f7fc]",
-      )}
-    >
-      {children}
-    </button>
-  )
-}
-
-function PapersView({ groups, activeSubject, onView, onRename, onDuplicate, onDelete }) {
+function PapersView({ groups, activeSubject, reviewMode, onView, onRename, onDuplicate, onDelete }) {
   if (!groups.length) {
     return (
       <div className="rounded-2xl border border-dashed border-[#dbe0ee] bg-white p-10 text-center">
         <ListChecks className="mx-auto h-7 w-7 text-[#bcc2d8]" />
-        <p className="mt-2 text-sm font-semibold text-[#1a2341]">No papers yet</p>
+        <p className="mt-2 text-sm font-semibold text-[#1a2341]">
+          {reviewMode ? "No previously generated exams yet" : "No papers yet"}
+        </p>
         <p className="mt-1 text-xs text-[#7f88a6]">
-          Head to <span className="font-semibold">Generate exam</span> and let AI build your first paper.
+          Head to <span className="font-semibold">Generate exam</span> to create your first paper.
         </p>
       </div>
     )
@@ -541,6 +910,7 @@ function PapersView({ groups, activeSubject, onView, onRename, onDuplicate, onDe
                 onRename={() => onRename(exam)}
                 onDuplicate={() => onDuplicate(exam)}
                 onDelete={() => onDelete(exam)}
+                viewLabel={reviewMode ? "Open review" : "View questions"}
               />
             ))}
           </div>

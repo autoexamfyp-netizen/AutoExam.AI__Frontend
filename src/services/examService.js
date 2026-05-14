@@ -30,18 +30,36 @@ export async function fetchExamsGrouped() {
 
 export async function fetchExam(id) {
   console.log("📄 Opening generated paper:", id)
+  if (!id) throw new Error("Exam id is required.")
   const out = await apiGet(`/api/exams/${id}`)
-  console.log("✅ Questions loaded successfully")
-  return out
+  if (!out || typeof out !== "object") {
+    throw new Error("Server returned an empty response while loading this exam.")
+  }
+  if (!out.exam) {
+    throw new Error(
+      out.error ||
+        "This exam could not be loaded. It may have been deleted, or you may not own it.",
+    )
+  }
+  console.log("✅ Questions loaded:", out.questions?.length ?? 0)
+  return { exam: out.exam, questions: Array.isArray(out.questions) ? out.questions : [] }
 }
 
-export async function createExam({ title, description, durationMinutes, categoryId, questionIds }) {
+export async function createExam({
+  title,
+  description,
+  durationMinutes,
+  categoryId,
+  sourceMaterialId,
+  questionIds,
+}) {
   console.log("💾 Creating exam manually:", { title, count: questionIds?.length })
   const out = await apiPost("/api/exams", {
     title,
     description,
     durationMinutes,
     categoryId: categoryId ?? null,
+    sourceMaterialId: sourceMaterialId ?? null,
     questionIds: questionIds || [],
   })
   return out?.exam

@@ -92,8 +92,8 @@ export async function fetchQuestionBank(opts = {}) {
 export async function updateQuestion(id, patch) {
   const payload = { updated_at: new Date().toISOString() }
   if (typeof patch.prompt === "string") payload.prompt = patch.prompt
-  if (typeof patch.model_answer === "string") payload.model_answer = patch.model_answer
-  if (typeof patch.topic === "string") payload.topic = patch.topic
+  if ("model_answer" in patch) payload.model_answer = patch.model_answer
+  if ("topic" in patch) payload.topic = patch.topic
   if (patch.difficulty) payload.difficulty = patch.difficulty
   if (typeof patch.marks === "number") payload.marks = patch.marks
   if (typeof patch.favorite === "boolean") payload.favorite = patch.favorite
@@ -109,6 +109,14 @@ export async function updateQuestion(id, patch) {
 export async function deleteQuestion(id) {
   const { error } = await supabase.from(TABLE).delete().eq("id", id)
   if (error) throw friendly(error, "Failed to delete question.")
+  return true
+}
+
+export async function deleteQuestions(ids) {
+  const cleanIds = Array.from(new Set((ids || []).filter(Boolean)))
+  if (!cleanIds.length) return true
+  const { error } = await supabase.from(TABLE).delete().in("id", cleanIds)
+  if (error) throw friendly(error, "Failed to delete selected questions.")
   return true
 }
 

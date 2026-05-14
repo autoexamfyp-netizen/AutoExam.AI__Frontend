@@ -7,6 +7,7 @@ import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import { fetchStudentExamsCatalog } from "../../services/studentExamService"
 
 const TABS = [
+  { id: "all", label: "All" },
   { id: "active", label: "Active" },
   { id: "completed", label: "Completed" },
   { id: "missed", label: "Missed" },
@@ -175,6 +176,7 @@ export default function StudentExamsPage() {
   const list = useMemo(() => {
     return raw.filter((row) => {
       const { studentStatus } = row
+      if (tab === "all") return true
       if (tab === "completed") return studentStatus === "completed"
       if (tab === "missed") return studentStatus === "missed"
       return studentStatus !== "completed" && studentStatus !== "missed"
@@ -198,7 +200,9 @@ export default function StudentExamsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 max-w-full">
           <h1 className="text-xl font-semibold tracking-[-0.3px] text-[#151d3a] sm:text-2xl">Exams</h1>
-          <p className="mt-1 break-words text-sm text-[#7d86a5]">Active, completed, and missed assessments</p>
+          <p className="mt-1 break-words text-sm text-[#7d86a5]">
+            Browse all assessments or filter by active, completed, and missed
+          </p>
         </div>
         <button
           type="button"
@@ -216,13 +220,13 @@ export default function StudentExamsPage() {
         </div>
       ) : null}
 
-      <div className="flex min-w-0 max-w-full gap-1 rounded-xl border border-[#e7eaf3] bg-white p-1 shadow-sm">
+      <div className="flex min-w-0 max-w-full flex-wrap gap-1 rounded-xl border border-[#e7eaf3] bg-white p-1 shadow-sm sm:flex-nowrap">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
+            className={`min-w-[4.5rem] flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
               tab === t.id ? "bg-[#f1efff] text-[#5f4ce6]" : "text-[#5d6580] hover:bg-[#fafbff]"
             }`}
           >
@@ -236,11 +240,13 @@ export default function StudentExamsPage() {
           <EmptyState
             title="Nothing here yet"
             description={
-              tab === "active"
+              tab === "all"
                 ? "When your teachers publish exams, they will show up here."
-                : tab === "completed"
-                  ? "Completed attempts will appear in this tab."
-                  : "Missed or expired windows are listed here."
+                : tab === "active"
+                  ? "You have no active or upcoming exams right now."
+                  : tab === "completed"
+                    ? "Completed attempts will appear in this tab."
+                    : "Missed or expired windows are listed here."
             }
           />
         ) : (

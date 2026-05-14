@@ -1,22 +1,40 @@
 import { useState } from "react"
-import { Heart, Pencil, Trash2 } from "lucide-react"
+import { Pencil, Trash2 } from "lucide-react"
 
 /**
  * Single question bank row.
  *
  * @param {object} props
  * @param {object} props.question
+ * @param {number} [props.index]
  * @param {(q: object) => void} [props.onEdit]
  * @param {(q: object) => void} [props.onDelete]
- * @param {(q: object) => void} [props.onToggleFavorite]
+ * @param {boolean} [props.selected]
+ * @param {(q: object) => void} [props.onToggleSelect]
  */
-export default function QuestionCard({ question, onEdit, onDelete, onToggleFavorite }) {
+export default function QuestionCard({ question, index, onEdit, onDelete, selected = false, onToggleSelect }) {
   const [open, setOpen] = useState(false)
   const opts = question.options
 
   return (
-    <article className="rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm">
+    <article
+      className={`rounded-2xl border bg-white p-4 shadow-sm transition ${
+        selected ? "border-[#6562f1] ring-2 ring-[#6562f1]/15" : "border-[#e7eaf3]"
+      }`}
+    >
       <div className="flex flex-wrap items-start gap-2 text-xs">
+        {onToggleSelect ? (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(question)}
+            aria-label={`Select question ${index || ""}`.trim()}
+            className="mt-1 h-4 w-4 shrink-0 rounded border-[#cfd5e6]"
+          />
+        ) : null}
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#eef1f7] text-[11px] font-bold text-[#3e4768]">
+          {index || "Q"}
+        </span>
         <span className="rounded-md bg-[#f1efff] px-2 py-0.5 font-semibold uppercase tracking-wide text-[#5f4ce6]">
           {question.question_type}
         </span>
@@ -32,11 +50,16 @@ export default function QuestionCard({ question, onEdit, onDelete, onToggleFavor
       </div>
       <p className="mt-3 whitespace-pre-wrap text-sm font-medium text-[#1a2341]">{question.prompt}</p>
       {opts && Array.isArray(opts) ? (
-        <ul className="mt-2 space-y-1 text-sm text-[#5d6580]">
-          {opts.map((o) => (
-            <li key={o}>· {o}</li>
+        <ol className="mt-2 grid max-h-[260px] gap-1.5 overflow-y-auto pr-1 text-sm text-[#5d6580] sm:grid-cols-2">
+          {opts.map((o, optIndex) => (
+            <li key={`${o}-${optIndex}`} className="flex gap-2 rounded-lg bg-[#fafbff] px-3 py-2">
+              <span className="shrink-0 font-semibold text-[#5f4ce6]">
+                {String.fromCharCode(65 + optIndex)}.
+              </span>
+              <span className="min-w-0 break-words">{o}</span>
+            </li>
           ))}
-        </ul>
+        </ol>
       ) : null}
       <button
         type="button"
@@ -50,18 +73,6 @@ export default function QuestionCard({ question, onEdit, onDelete, onToggleFavor
       ) : null}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {onToggleFavorite ? (
-          <button
-            type="button"
-            onClick={() => onToggleFavorite(question)}
-            className={`inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-sm font-semibold ${
-              question.favorite ? "border-[#6562f1] bg-[#f1efff] text-[#5f4ce6]" : "border-[#e3e6ef] bg-white text-[#313a58]"
-            }`}
-          >
-            <Heart className={`h-4 w-4 ${question.favorite ? "fill-current" : ""}`} />
-            {question.favorite ? "Favorited" : "Favorite"}
-          </button>
-        ) : null}
         {onEdit ? (
           <button
             type="button"

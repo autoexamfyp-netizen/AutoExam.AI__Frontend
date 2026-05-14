@@ -61,19 +61,22 @@ function CategoryForm({ initial, onSubmit, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center sm:items-center" role="presentation">
+    <div
+      className="fixed inset-0 z-[200] flex items-end justify-center overflow-y-auto overscroll-contain sm:items-center sm:p-4"
+      role="presentation"
+    >
       <button
         type="button"
         aria-label="Close"
         onClick={() => !submitting && onClose()}
-        className="absolute inset-0 bg-[#0f1730]/40 backdrop-blur-[2px]"
+        className="fixed inset-0 bg-[#0f1730]/40 backdrop-blur-[2px]"
       />
       <form
         onSubmit={handleSubmit}
         role="dialog"
         aria-modal="true"
         aria-labelledby="category-modal-title"
-        className="relative z-10 w-full max-w-md rounded-t-2xl border border-[#e7eaf3] bg-white p-6 shadow-[0_-8px_40px_rgba(15,23,48,0.12)] sm:rounded-2xl sm:shadow-[0_20px_60px_rgba(15,23,48,0.15)]"
+        className="relative z-10 w-full max-w-md max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-t-2xl border border-[#e7eaf3] bg-white p-5 shadow-[0_-8px_40px_rgba(15,23,48,0.12)] sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-6 sm:shadow-[0_20px_60px_rgba(15,23,48,0.15)]"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -133,14 +136,14 @@ function CategoryForm({ initial, onSubmit, onClose }) {
             type="button"
             onClick={() => !submitting && onClose()}
             disabled={submitting}
-            className="h-11 rounded-xl border border-[#e3e6ef] bg-white px-4 text-sm font-semibold text-[#313a58] transition hover:bg-[#fafbff] disabled:opacity-60"
+            className="h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-4 text-sm font-semibold text-[#313a58] transition hover:bg-[#fafbff] disabled:opacity-60 sm:w-auto"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting || !title.trim()}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white transition hover:bg-[#5a56e2] disabled:opacity-60"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white transition hover:bg-[#5a56e2] disabled:opacity-60 sm:w-auto"
           >
             {submitting ? (
               <>

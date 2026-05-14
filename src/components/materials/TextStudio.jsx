@@ -6,6 +6,7 @@ import GeneratePanel from "./GeneratePanel"
 import QuestionList from "../questions/QuestionList"
 import CategorySidebar from "./CategorySidebar"
 import ConfirmDialog from "../student/ConfirmDialog"
+import RenameDialog from "../ui/RenameDialog"
 import {
   createTextMaterial,
   deleteTextMaterial,
@@ -83,6 +84,9 @@ export default function TextStudio({
   const [generatedPreview, setGeneratedPreview] = useState([])
 
   const [pendingDelete, setPendingDelete] = useState(null)
+  const [pendingRename, setPendingRename] = useState(null)
+  const [renameBusy, setRenameBusy] = useState(false)
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   const autosaveTimerRef = useRef(null)
   const savedFlashTimerRef = useRef(null)
@@ -200,8 +204,14 @@ export default function TextStudio({
   /* ----------------------- Save (manual + autosave) ------------------------ */
   const performSave = useCallback(
     async ({ silent = false } = {}) => {
-      if (!title.trim() || !content.trim() || !categoryId) {
-        if (!silent) showToast("error", "Title, category, and pasted text are required.")
+      const missing = []
+      if (!title.trim()) missing.push("title")
+      if (!categoryId) missing.push("category")
+      if (!content.trim()) missing.push("content")
+      if (missing.length) {
+        const msg = `Add a ${missing.join(", ")} before saving.`
+        console.warn("⚠️ Save blocked — missing:", missing)
+        if (!silent) showToast("error", msg)
         return null
       }
       setSaving(true)
@@ -209,7 +219,7 @@ export default function TextStudio({
       try {
         let row
         if (draftId) {
-          console.log("💾 Saving text content...")
+          console.log("💾 Saving text content...", { draftId })
           row = await updateTextMaterial(draftId, { title, content, categoryId })
         } else {
           console.log("📝 Creating new text content...")
@@ -217,9 +227,9 @@ export default function TextStudio({
           row = await createTextMaterial({ title, content, categoryId })
           setDraftId(row.id)
           setIsNewDraft(false)
-          if (!silent) console.log("✅ New content created")
+          if (!silent) console.log("✅ New content created", row.id)
         }
-        console.log("✅ Content saved successfully")
+        console.log("✅ Content saved successfully", row.id)
         updateLocalRow(row)
         setOriginalSnapshot({
           id: row.id,
@@ -271,23 +281,31 @@ export default function TextStudio({
   }, [])
 
   /* ----------------------- Per-row actions --------------------------------- */
-  const handleRename = useCallback(
-    async (row) => {
-      const next = window.prompt("Rename note", row.title)
-      if (next === null || !next.trim() || next.trim() === row.title) return
+  const handleRename = useCallback((row) => {
+    setPendingRename(row)
+  }, [])
+
+  const handleConfirmRename = useCallback(
+    async (nextTitle) => {
+      if (!pendingRename) return
+      setRenameBusy(true)
       try {
-        const updated = await updateTextMaterial(row.id, { title: next.trim() })
+        const updated = await updateTextMaterial(pendingRename.id, { title: nextTitle })
         updateLocalRow(updated)
         if (updated.id === draftId) {
           setTitle(updated.title)
           setOriginalSnapshot((s) => ({ ...s, title: updated.title }))
         }
-        showToast("success", "Renamed")
+        showToast("success", "Note renamed")
+        setPendingRename(null)
       } catch (e) {
         showToast("error", e?.message || "Rename failed")
+        throw e
+      } finally {
+        setRenameBusy(false)
       }
     },
-    [draftId, updateLocalRow, showToast],
+    [pendingRename, draftId, updateLocalRow, showToast],
   )
 
   const handleDuplicate = useCallback(
@@ -305,9 +323,9 @@ export default function TextStudio({
   )
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!pendingDelete) return
+    if (!pendingDelete || deleteBusy) return
     const target = pendingDelete
-    setPendingDelete(null)
+    setDeleteBusy(true)
     try {
       await deleteTextMaterial(target.id)
       setItems((curr) => curr.filter((r) => r.id !== target.id))
@@ -318,7 +336,6 @@ export default function TextStudio({
         return next
       })
       if (target.id === draftId) {
-        // Reset editor — load first remaining row, or empty.
         const rest = items.filter((r) => r.id !== target.id)
         if (rest.length) loadIntoEditor(rest[0])
         else {
@@ -331,11 +348,14 @@ export default function TextStudio({
           setSaveStatus("idle")
         }
       }
+      setPendingDelete(null)
       showToast("success", "Note deleted")
     } catch (e) {
       showToast("error", e?.message || "Delete failed")
+    } finally {
+      setDeleteBusy(false)
     }
-  }, [pendingDelete, draftId, items, loadIntoEditor, showToast])
+  }, [pendingDelete, deleteBusy, draftId, items, loadIntoEditor, showToast])
 
   /* ----------------------- Generation -------------------------------------- */
   const handleGenerate = async () => {
@@ -508,18 +528,45 @@ export default function TextStudio({
         </p>
       </div>
 
+      <RenameDialog
+        open={Boolean(pendingRename)}
+        title="Rename note"
+        label="Note title"
+        helper={
+          pendingRename?.category?.title
+            ? `In subject "${pendingRename.category.title}".`
+            : "Give this note a clear, searchable title."
+        }
+        initialValue={pendingRename?.title || ""}
+        confirmLabel="Save title"
+        onConfirm={handleConfirmRename}
+        onCancel={() => !renameBusy && setPendingRename(null)}
+      />
+
       <ConfirmDialog
         open={Boolean(pendingDelete)}
-        title="Delete this content?"
+        title="Delete this note?"
+        destructive
+        busy={deleteBusy}
         message={
-          pendingDelete
-            ? `"${pendingDelete.title}" will be removed. Questions you already generated from it will remain in the question bank.`
-            : ""
+          pendingDelete ? (
+            <>
+              <p>
+                <strong className="text-[#151d3a]">{pendingDelete.title || "Untitled"}</strong> will
+                be removed from your library.
+              </p>
+              <p className="mt-2 text-xs text-[#7f88a6]">
+                Questions you already generated from it will remain in the question bank.
+              </p>
+            </>
+          ) : (
+            ""
+          )
         }
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        confirmLabel="Delete note"
+        cancelLabel="Keep"
         onConfirm={handleConfirmDelete}
-        onCancel={() => setPendingDelete(null)}
+        onCancel={() => !deleteBusy && setPendingDelete(null)}
       />
     </div>
   )

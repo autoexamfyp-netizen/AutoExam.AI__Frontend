@@ -16,7 +16,7 @@ function formatAttemptedAt(value) {
 }
 
 function toResultCard(examEntry, detail) {
-  const submission = examEntry.submission || {}
+  const submission = { ...(examEntry.submission || {}), ...(detail?.submission || {}) }
   const answers = Array.isArray(detail?.answers) ? detail.answers : []
   const totalScore = Number(submission.total_score || 0)
   const maxScore = Number(submission.max_score || 0)
@@ -61,7 +61,7 @@ function toResultCard(examEntry, detail) {
     writtenScore: buckets.writtenScore,
     writtenMax: buckets.writtenMax,
     summary:
-      detail?.submission?.teacher_remarks ||
+      (typeof submission.teacher_remarks === "string" && submission.teacher_remarks.trim()) ||
       detail?.answers?.find((a) => typeof a.evaluator_remarks === "string" && a.evaluator_remarks.trim())?.evaluator_remarks ||
       (submission.status === "evaluated" ? "Your attempt has been graded." : "Your attempt was submitted and scored.") ,
   }

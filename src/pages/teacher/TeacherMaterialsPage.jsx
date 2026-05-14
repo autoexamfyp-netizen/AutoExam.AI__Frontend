@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { AlertCircle, FileStack, FolderOpen, Menu, Search, UploadCloud, X } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import ConfirmDialog from "../../components/student/ConfirmDialog"
+import RenameDialog from "../../components/ui/RenameDialog"
 import FileUpload from "../../components/materials/FileUpload"
 import MaterialCard from "../../components/materials/MaterialCard"
 import MaterialPreviewModal from "../../components/materials/MaterialPreviewModal"
@@ -40,6 +41,10 @@ export default function TeacherMaterialsPage() {
   const [preview, setPreview] = useState(null)
   const [pendingDeleteMaterial, setPendingDeleteMaterial] = useState(null)
   const [pendingDeleteCategory, setPendingDeleteCategory] = useState(null)
+  const [pendingRenameMaterial, setPendingRenameMaterial] = useState(null)
+  const [renameBusy, setRenameBusy] = useState(false)
+  const [deleteMaterialBusy, setDeleteMaterialBusy] = useState(false)
+  const [deleteCategoryBusy, setDeleteCategoryBusy] = useState(false)
   const [showCategoryModal, setShowCategoryModal] = useState(false)
   const [editingCategory, setEditingCategory] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -166,33 +171,44 @@ export default function TeacherMaterialsPage() {
     if (id !== ALL_ID && id !== UNCAT_ID) setUploadCategoryId(id)
   }
 
-  const onRename = useCallback(
-    async (material) => {
-      const next = window.prompt("Rename material", material.title)
-      if (!next || next.trim() === material.title) return
+  const onRename = useCallback((material) => {
+    setPendingRenameMaterial(material)
+  }, [])
+
+  const onConfirmRenameMaterial = useCallback(
+    async (nextTitle) => {
+      if (!pendingRenameMaterial) return
+      setRenameBusy(true)
       try {
-        const updated = await renameMaterial(material.id, next.trim())
+        const updated = await renameMaterial(pendingRenameMaterial.id, nextTitle)
         setMaterials((curr) => curr.map((m) => (m.id === updated.id ? updated : m)))
-        showToast("success", "Renamed")
+        showToast("success", "Material renamed")
+        setPendingRenameMaterial(null)
       } catch (e) {
         showToast("error", e?.message || "Rename failed")
+        throw e
+      } finally {
+        setRenameBusy(false)
       }
     },
-    [showToast],
+    [pendingRenameMaterial, showToast],
   )
 
   const onConfirmDeleteMaterial = useCallback(async () => {
-    if (!pendingDeleteMaterial) return
+    if (!pendingDeleteMaterial || deleteMaterialBusy) return
     const target = pendingDeleteMaterial
-    setPendingDeleteMaterial(null)
+    setDeleteMaterialBusy(true)
     try {
       await deleteMaterial(target.id)
       setMaterials((curr) => curr.filter((m) => m.id !== target.id))
+      setPendingDeleteMaterial(null)
       showToast("success", "Material deleted")
     } catch (e) {
       showToast("error", e?.message || "Delete failed")
+    } finally {
+      setDeleteMaterialBusy(false)
     }
-  }, [pendingDeleteMaterial, showToast])
+  }, [pendingDeleteMaterial, deleteMaterialBusy, showToast])
 
   const onSubmitCategory = useCallback(
     async ({ title, description }) => {
@@ -216,9 +232,9 @@ export default function TeacherMaterialsPage() {
   )
 
   const onConfirmDeleteCategory = useCallback(async () => {
-    if (!pendingDeleteCategory) return
+    if (!pendingDeleteCategory || deleteCategoryBusy) return
     const target = pendingDeleteCategory
-    setPendingDeleteCategory(null)
+    setDeleteCategoryBusy(true)
     try {
       await deleteCategory(target.id)
       setCategories((curr) => curr.filter((c) => c.id !== target.id))
@@ -229,11 +245,14 @@ export default function TeacherMaterialsPage() {
       )
       if (activeId === target.id) setActiveId(ALL_ID)
       if (uploadCategoryId === target.id) setUploadCategoryId(null)
-      showToast("success", "Category deleted")
+      setPendingDeleteCategory(null)
+      showToast("success", "Subject deleted")
     } catch (e) {
       showToast("error", e?.message || "Delete failed")
+    } finally {
+      setDeleteCategoryBusy(false)
     }
-  }, [pendingDeleteCategory, activeId, uploadCategoryId, showToast])
+  }, [pendingDeleteCategory, deleteCategoryBusy, activeId, uploadCategoryId, showToast])
 
   const activeTitle =
     activeId === ALL_ID
@@ -502,32 +521,79 @@ export default function TeacherMaterialsPage() {
         }}
       />
 
+      <RenameDialog
+        open={Boolean(pendingRenameMaterial)}
+        title="Rename material"
+        label="Material name"
+        helper={
+          pendingRenameMaterial?.category?.title
+            ? `In subject "${pendingRenameMaterial.category.title}".`
+            : "Give this material a clear, searchable name."
+        }
+        initialValue={pendingRenameMaterial?.title || ""}
+        confirmLabel="Save name"
+        onConfirm={onConfirmRenameMaterial}
+        onCancel={() => !renameBusy && setPendingRenameMaterial(null)}
+      />
+
       <ConfirmDialog
         open={Boolean(pendingDeleteMaterial)}
         title="Delete material?"
+        destructive
+        busy={deleteMaterialBusy}
         message={
-          pendingDeleteMaterial
-            ? `"${pendingDeleteMaterial.title}" will be removed from your library. The file remains on Cloudinary until cleanup is wired server-side.`
-            : ""
+          pendingDeleteMaterial ? (
+            <>
+              <p>
+                <strong className="text-[#151d3a]">{pendingDeleteMaterial.title}</strong> will be
+                permanently removed from your library
+                {pendingDeleteMaterial.category?.title
+                  ? ` in "${pendingDeleteMaterial.category.title}"`
+                  : ""}
+                .
+              </p>
+              <p className="mt-2 text-xs text-[#7f88a6]">
+                The underlying file may still exist in Cloudinary until server-side cleanup is wired.
+              </p>
+            </>
+          ) : (
+            ""
+          )
         }
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        confirmLabel="Delete material"
+        cancelLabel="Keep"
         onConfirm={onConfirmDeleteMaterial}
-        onCancel={() => setPendingDeleteMaterial(null)}
+        onCancel={() => !deleteMaterialBusy && setPendingDeleteMaterial(null)}
       />
 
       <ConfirmDialog
         open={Boolean(pendingDeleteCategory)}
-        title="Delete category?"
+        title="Delete subject?"
+        destructive
+        busy={deleteCategoryBusy}
         message={
-          pendingDeleteCategory
-            ? `"${pendingDeleteCategory.title}" will be removed. Materials inside will become uncategorized — they aren't deleted.`
-            : ""
+          pendingDeleteCategory ? (
+            <>
+              <p>
+                <strong className="text-[#151d3a]">{pendingDeleteCategory.title}</strong> will be
+                removed from your subjects.
+              </p>
+              <p className="mt-2 text-xs text-[#7f88a6]">
+                {pendingDeleteCategory.material_count > 0
+                  ? `${pendingDeleteCategory.material_count} material${
+                      pendingDeleteCategory.material_count === 1 ? "" : "s"
+                    } inside will become uncategorized — they aren't deleted.`
+                  : "No materials are linked to this subject."}
+              </p>
+            </>
+          ) : (
+            ""
+          )
         }
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        confirmLabel="Delete subject"
+        cancelLabel="Keep"
         onConfirm={onConfirmDeleteCategory}
-        onCancel={() => setPendingDeleteCategory(null)}
+        onCancel={() => !deleteCategoryBusy && setPendingDeleteCategory(null)}
       />
     </div>
   )

@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom"
 import {
   BarChart3,
   Bot,
+  ClipboardCheck,
   FolderOpen,
   GraduationCap,
   Inbox,
@@ -28,6 +29,7 @@ const NAV = [
   { to: "/teacher-dashboard", end: true, label: "Dashboard", icon: LayoutDashboard },
   { to: "/teacher-dashboard/materials", label: "Materials", icon: FolderOpen },
   { to: "/teacher-dashboard/generate-exam", label: "Generate Exam", icon: Wand2 },
+  { to: "/teacher-dashboard/exams", label: "Generated Exams", icon: ClipboardCheck },
   { to: "/teacher-dashboard/question-bank", label: "Question Bank", icon: Library },
   { to: "/teacher-dashboard/published-exams", label: "Published Exams", icon: Send },
   { to: "/teacher-dashboard/submissions", label: "Submissions", icon: Inbox },

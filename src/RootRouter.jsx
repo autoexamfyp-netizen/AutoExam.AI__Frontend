@@ -81,6 +81,7 @@ export default function RootRouter() {
         <Route index element={<TeacherHomePage />} />
         <Route path="materials" element={<TeacherMaterialsPage />} />
         <Route path="generate-exam" element={<TeacherGenerateExamPage />} />
+        <Route path="exams" element={<TeacherQuestionBankPage />} />
         <Route path="exams/:examId/review" element={<TeacherExamReviewPage />} />
         <Route path="published-exams" element={<TeacherPublishedExamsPage />} />
         <Route path="question-bank" element={<TeacherQuestionBankPage />} />

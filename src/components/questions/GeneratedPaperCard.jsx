@@ -34,14 +34,25 @@ const DIFFICULTY_BADGE = {
  * @param {object} props
  * @param {object} props.exam   { id, title, total_marks, total_questions, difficulty, source }
  * @param {() => void} props.onView
+ * @param {string} [props.viewLabel]
  * @param {() => void} [props.onRename]
  * @param {() => void} [props.onDuplicate]
  * @param {() => void} [props.onDelete]
  */
-export default function GeneratedPaperCard({ exam, onView, onRename, onDuplicate, onDelete }) {
+export default function GeneratedPaperCard({
+  exam,
+  onView,
+  viewLabel = "View questions",
+  onRename,
+  onDuplicate,
+  onDelete,
+}) {
   const [menuOpen, setMenuOpen] = useState(false)
   const closeMenu = () => setMenuOpen(false)
+  if (!exam || !exam.id) return null
   const diffClass = DIFFICULTY_BADGE[exam.difficulty] || DIFFICULTY_BADGE.medium
+  const displayTitle = exam.title?.trim() ? exam.title : "Untitled exam"
+  const categoryTitle = exam.category?.title || "Uncategorized"
 
   return (
     <article className="group relative flex h-full flex-col rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm transition hover:border-[#6562f1]/30 hover:shadow-md">
@@ -50,9 +61,16 @@ export default function GeneratedPaperCard({ exam, onView, onRename, onDuplicate
           <ClipboardCheck className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-semibold text-[#151d3a]">{exam.title}</h3>
-          <p className="mt-0.5 text-xs text-[#7f88a6]">
-            {exam.category?.title || "Uncategorized"}
+          <h3
+            className={`truncate text-sm font-semibold ${
+              exam.title?.trim() ? "text-[#151d3a]" : "italic text-[#7f88a6]"
+            }`}
+            title={displayTitle}
+          >
+            {displayTitle}
+          </h3>
+          <p className="mt-0.5 truncate text-xs text-[#7f88a6]" title={categoryTitle}>
+            {categoryTitle}
           </p>
         </div>
         <div className="relative">
@@ -154,7 +172,7 @@ export default function GeneratedPaperCard({ exam, onView, onRename, onDuplicate
         onClick={onView}
         className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#151d3a] text-xs font-semibold text-white transition hover:bg-[#252f55]"
       >
-        <Eye className="h-3.5 w-3.5" /> View questions
+        <Eye className="h-3.5 w-3.5" /> {viewLabel}
       </button>
     </article>
   )

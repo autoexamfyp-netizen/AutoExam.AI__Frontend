@@ -22,7 +22,9 @@ function topicLabel(answer, index) {
 }
 
 function buildFeedbackFromSubmission(examEntry, detail) {
-  const submission = examEntry.submission || {}
+  // Dashboard list omits some columns (e.g. teacher_remarks). Merge with the
+  // full submission from GET /api/submissions/:id so grader notes resolve.
+  const submission = { ...(examEntry.submission || {}), ...(detail?.submission || {}) }
   const answers = Array.isArray(detail?.answers) ? detail.answers : []
   const totalScore = Number(submission.total_score || 0)
   const maxScore = Number(submission.max_score || 0)
@@ -90,9 +92,22 @@ function buildFeedbackFromSubmission(examEntry, detail) {
   })
 
   const evaluatorRemarks = answers
-    .map((answer) => answer.evaluator_remarks?.trim())
+    .map((answer) => String(answer.evaluator_remarks ?? "").trim())
     .filter(Boolean)
-  const teacherRemarks = submission.teacher_remarks?.trim()
+  const teacherRemarks = String(submission.teacher_remarks ?? "").trim()
+
+  const notes =
+    teacherRemarks ||
+    evaluatorRemarks[0] ||
+    `Scored ${totalScore}/${maxScore || 0} (${percentage}%).`
+
+  // Extra lines: per-answer remarks when we already showed teacher (or first)
+  // in the main box — avoid duplicating the same text twice.
+  const notesDetails = (() => {
+    if (teacherRemarks && evaluatorRemarks.length) return evaluatorRemarks
+    if (!teacherRemarks && evaluatorRemarks.length > 1) return evaluatorRemarks.slice(1)
+    return []
+  })()
 
   return {
     examTitle: examEntry.published?.title || "Untitled exam",
@@ -103,13 +118,9 @@ function buildFeedbackFromSubmission(examEntry, detail) {
     recommendations: recommendations.length
       ? recommendations
       : ["Keep working through the same topic mix and compare the next attempt with this report."],
-    notes: teacherRemarks || evaluatorRemarks[0] || `Scored ${totalScore}/${maxScore || 0} (${percentage}%).`,
-    notesDetails:
-      evaluatorRemarks.length > 1
-        ? evaluatorRemarks.slice(1, 3)
-        : teacherRemarks
-          ? [teacherRemarks]
-          : [],
+    teacherRemarks,
+    notes,
+    notesDetails,
     summaryLabel: maxScore > 0 ? `${totalScore}/${maxScore}` : `${totalScore}`,
     percentage,
     submittedAt: submission.submitted_at || submission.updated_at,
@@ -262,18 +273,26 @@ export default function StudentFeedbackPage() {
           </div>
         </div>
 
-        <div className="mt-5 rounded-xl border border-[#eef1f7] bg-[#f8f9fd] p-4 text-sm leading-relaxed text-[#5d6580]">
-          {data.notes}
+        <div className="mt-5 space-y-2">
+          {data.teacherRemarks ? (
+            <p className="text-xs font-semibold text-[#6562f1]">Instructor feedback</p>
+          ) : null}
+          <div className="rounded-xl border border-[#eef1f7] bg-[#f8f9fd] p-4 text-sm leading-relaxed text-[#5d6580]">
+            {data.notes}
+          </div>
         </div>
         {data.notesDetails.length ? (
-          <ul className="mt-3 space-y-2 text-sm text-[#5d6580]">
-            {data.notesDetails.map((note, index) => (
-              <li key={index} className="flex min-w-0 gap-2 rounded-xl bg-[#f6f7fb] px-3 py-2">
-                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#6562f1]" />
-                <span className="min-w-0 break-words">{note}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="mt-4 text-xs font-semibold text-[#9aa3c2]">Per-question feedback</p>
+            <ul className="mt-2 space-y-2 text-sm text-[#5d6580]">
+              {data.notesDetails.map((note, index) => (
+                <li key={index} className="flex min-w-0 gap-2 rounded-xl bg-[#f6f7fb] px-3 py-2">
+                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#6562f1]" />
+                  <span className="min-w-0 break-words">{note}</span>
+                </li>
+              ))}
+            </ul>
+          </>
         ) : null}
       </section>
     </div>

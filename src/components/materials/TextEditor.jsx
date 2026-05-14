@@ -173,8 +173,11 @@ export default function TextEditor({
     if (mode !== "edit") return
     const el = taRef.current
     if (!el) return
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800
+    const maxH = Math.max(360, Math.min(900, Math.round(vh * 0.7)))
+    const minH = window.innerWidth < 640 ? 220 : 280
     el.style.height = "auto"
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 280), 720)}px`
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, minH), maxH)}px`
   }, [content, mode])
 
   const canSave = useMemo(
@@ -182,9 +185,22 @@ export default function TextEditor({
     [title, content, categoryId],
   )
 
+  const missingMsg = useMemo(() => {
+    const missing = []
+    if (!title.trim()) missing.push("title")
+    if (!categoryId) missing.push("category")
+    if (!content.trim()) missing.push("content")
+    return missing.length ? `Add a ${missing.join(", ")} to save.` : ""
+  }, [title, categoryId, content])
+
+  const handleSaveClick = () => {
+    console.log("🖱️ Save button clicked", { canSave, missingMsg, hasOnSave: typeof onSave === "function" })
+    onSave?.()
+  }
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#e7eaf3] bg-white shadow-sm">
-      <div className="sticky top-16 z-10 flex flex-wrap items-center gap-2 border-b border-[#eef1f7] bg-white/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-white/85">
+    <div className="min-w-0 max-w-full overflow-x-clip rounded-2xl border border-[#e7eaf3] bg-white shadow-sm">
+      <div className="sticky top-16 z-20 flex flex-wrap items-center gap-2 rounded-t-2xl border-b border-[#eef1f7] bg-white/95 px-3 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:px-4 lg:px-5">
         <span className="text-xs font-semibold uppercase tracking-wide text-[#9aa3c2]">
           {isNewDraft ? "New draft" : "Editing"}
         </span>
@@ -212,18 +228,22 @@ export default function TextEditor({
         </div>
         <button
           type="button"
-          onClick={onSave}
-          disabled={!canSave || saving || disabled}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#151d3a] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#252f55] disabled:opacity-50"
+          onClick={handleSaveClick}
+          disabled={saving || disabled}
+          title={canSave ? "Save now" : missingMsg}
+          aria-disabled={!canSave || saving || disabled}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition disabled:opacity-50 ${
+            canSave ? "bg-[#151d3a] hover:bg-[#252f55]" : "bg-[#9aa3c2] hover:bg-[#8a93ad]"
+          }`}
         >
           <Save className="h-3.5 w-3.5" />
           {saving ? "Saving…" : "Save"}
         </button>
       </div>
 
-      <div className="p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="block min-w-0 flex-1 text-xs font-semibold uppercase tracking-wide text-[#9aa3c2]">
+      <div className="min-w-0 max-w-full p-3 sm:p-5 lg:p-6">
+        <div className="flex min-w-0 max-w-full flex-col gap-3 sm:gap-4 lg:flex-row lg:items-end">
+          <label className="block min-w-0 flex-1 scroll-mt-32 text-[11px] font-semibold uppercase tracking-wide text-[#9aa3c2] sm:text-xs">
             Content title
             <input
               type="text"
@@ -231,16 +251,16 @@ export default function TextEditor({
               onChange={(e) => onTitleChange(e.target.value)}
               placeholder="e.g. Week 4 — Graph algorithms"
               disabled={disabled}
-              className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm font-medium text-[#151d3a] outline-none focus:border-[#6562f1]"
+              className="mt-1 h-11 w-full min-w-0 max-w-full rounded-xl border border-[#e3e6ef] px-3 text-sm font-medium text-[#151d3a] outline-none transition focus:border-[#6562f1] focus:ring-2 focus:ring-[#6562f1]/15 sm:text-[15px]"
             />
           </label>
-          <label className="block w-full text-xs font-semibold uppercase tracking-wide text-[#9aa3c2] sm:w-52">
+          <label className="block min-w-0 max-w-full scroll-mt-32 text-[11px] font-semibold uppercase tracking-wide text-[#9aa3c2] sm:text-xs lg:w-56 xl:w-64">
             Category
             <select
               value={categoryId ?? ""}
               onChange={(e) => onCategoryChange(e.target.value || null)}
               disabled={disabled}
-              className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm outline-none focus:border-[#6562f1]"
+              className="mt-1 h-11 w-full min-w-0 max-w-full rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm outline-none transition focus:border-[#6562f1] focus:ring-2 focus:ring-[#6562f1]/15"
             >
               <option value="">Select category…</option>
               {categories.map((c) => (
@@ -254,7 +274,7 @@ export default function TextEditor({
 
         {mode === "edit" ? (
           <>
-            <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-[#9aa3c2]">
+            <label className="mt-4 block scroll-mt-32 text-[11px] font-semibold uppercase tracking-wide text-[#9aa3c2] sm:text-xs">
               Paste your notes (Markdown-friendly plain text)
             </label>
             <textarea
@@ -264,20 +284,21 @@ export default function TextEditor({
               placeholder="Paste lecture notes, chapter summaries, or study bullets here. Question generation uses this text only — PDFs uploaded elsewhere are not parsed."
               disabled={disabled}
               rows={14}
-              className="mt-1 min-h-[280px] w-full resize-y rounded-xl border border-[#e3e6ef] bg-[#fafbff] px-3 py-2.5 font-mono text-sm leading-relaxed text-[#1a2341] outline-none focus:border-[#6562f1]"
+              className="mt-1 block w-full min-w-0 max-w-full scroll-mt-32 resize-y overflow-auto rounded-xl border border-[#e3e6ef] bg-[#fafbff] px-3 py-2.5 font-mono text-[13px] leading-relaxed text-[#1a2341] outline-none transition focus:border-[#6562f1] focus:ring-2 focus:ring-[#6562f1]/15 sm:text-sm lg:text-[15px] lg:leading-7"
+              style={{ minHeight: "220px", maxHeight: "min(70vh, 900px)" }}
             />
           </>
         ) : (
-          <div className="mt-4">
-            <span className="text-xs font-semibold uppercase tracking-wide text-[#9aa3c2]">Preview</span>
-            <div className="mt-1">
+          <div className="mt-4 min-w-0 max-w-full">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[#9aa3c2] sm:text-xs">Preview</span>
+            <div className="mt-1 min-w-0 max-w-full overflow-auto">
               <MarkdownView text={content} />
             </div>
           </div>
         )}
 
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[#7f88a6]">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-col gap-2 text-xs text-[#7f88a6] sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span>{len.toLocaleString()} characters</span>
             <span aria-hidden="true">·</span>
             <span>{words.toLocaleString()} words</span>
