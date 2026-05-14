@@ -8,10 +8,14 @@ import {
   FileText,
   Library,
   ListChecks,
+  Loader2,
+  Pencil,
+  Plus,
   Save,
   RefreshCw,
   Sparkles,
   Wand2,
+  X,
 } from "lucide-react"
 import { fetchCategories } from "../../services/categoryService"
 import {
@@ -19,7 +23,12 @@ import {
   fetchQuestionCountsByText,
   fetchTextMaterials,
 } from "../../services/contentService"
-import { fetchQuestionBank, generateQuestionsFromText } from "../../services/questionService"
+import {
+  createQuestion,
+  fetchQuestionBank,
+  generateQuestionsFromText,
+  updateQuestion,
+} from "../../services/questionService"
 import { createExam, fetchExams, generateExam } from "../../services/examService"
 import ContentPicker from "../../components/exam/ContentPicker"
 
@@ -74,7 +83,11 @@ export default function TeacherGenerateExamPage() {
   const [generating, setGenerating] = useState(false)
   const [savingQuestions, setSavingQuestions] = useState(false)
   const [error, setError] = useState("")
+  const [infoNotice, setInfoNotice] = useState("")
   const [last, setLast] = useState(null) // { exam, questions }
+  const [manualModal, setManualModal] = useState(null)
+  const [manualForm, setManualForm] = useState(null)
+  const [manualSaving, setManualSaving] = useState(false)
   const [previousExams, setPreviousExams] = useState([])
   const [previousLoading, setPreviousLoading] = useState(false)
 
@@ -200,6 +213,132 @@ export default function TeacherGenerateExamPage() {
     })
   }
 
+  const defaultManualCategoryId = useMemo(() => {
+    if (mode === MODE.SAVED && activeMaterial?.category_id) return activeMaterial.category_id
+    if (mode === MODE.NEW && pastedCategoryId) return pastedCategoryId
+    return categories[0]?.id ?? ""
+  }, [mode, activeMaterial?.category_id, pastedCategoryId, categories])
+
+  const resetManualModal = () => {
+    setManualModal(null)
+    setManualForm(null)
+  }
+
+  const openAddManualQuestion = () => {
+    setError("")
+    setInfoNotice("")
+    setManualModal({ mode: "add" })
+    setManualForm({
+      prompt: "",
+      model_answer: "",
+      question_type: "short",
+      difficulty: "medium",
+      marks: 2,
+      topic: "",
+      category_id: defaultManualCategoryId,
+      optionsText: "",
+    })
+  }
+
+  const openEditGeneratedQuestion = (q) => {
+    setError("")
+    setInfoNotice("")
+    setManualModal({ mode: "edit", question: q })
+    setManualForm({
+      prompt: q.prompt || "",
+      model_answer: q.model_answer || "",
+      question_type: q.question_type || "short",
+      difficulty: q.difficulty || "medium",
+      marks: Number(q.marks) || 2,
+      topic: q.topic || "",
+      category_id: q.category_id || "",
+      optionsText: Array.isArray(q.options) ? q.options.join("\n") : "",
+    })
+  }
+
+  const closeManualModal = () => {
+    if (manualSaving) return
+    resetManualModal()
+  }
+
+  const submitManualQuestion = async (e) => {
+    e.preventDefault()
+    if (!manualForm || !manualModal || manualSaving) return
+    if (!manualForm.prompt.trim()) {
+      setError("Question text is required.")
+      return
+    }
+    if (manualForm.question_type === "mcq") {
+      const opts = manualForm.optionsText.split("\n").map((x) => x.trim()).filter(Boolean)
+      if (opts.length < 2) {
+        setError("Add at least two MCQ options (one per line).")
+        return
+      }
+    }
+    setManualSaving(true)
+    setError("")
+    try {
+      if (manualModal.mode === "add") {
+        const row = await createQuestion({
+          prompt: manualForm.prompt.trim(),
+          model_answer: manualForm.model_answer.trim() || null,
+          question_type: manualForm.question_type,
+          difficulty: manualForm.difficulty,
+          marks: Number(manualForm.marks) || 1,
+          topic: manualForm.topic.trim() || null,
+          category_id: manualForm.category_id || null,
+          options:
+            manualForm.question_type === "mcq"
+              ? manualForm.optionsText.split("\n").map((x) => x.trim()).filter(Boolean)
+              : null,
+          ai_generated: false,
+          text_material_id:
+            mode === MODE.SAVED && activeMaterial?.id ? activeMaterial.id : null,
+        })
+        if (mode === MODE.BANK) {
+          setBank((curr) => [row, ...curr])
+          setPicked((prev) => new Set([...prev, row.id]))
+          setInfoNotice("Question added and selected for compile.")
+        } else {
+          setInfoNotice(
+            "Saved to your question bank. Open “From question bank” to tick it into a paper, or edit it in Question Bank.",
+          )
+        }
+        resetManualModal()
+      } else {
+        const row = await updateQuestion(manualModal.question.id, {
+          prompt: manualForm.prompt.trim(),
+          model_answer: manualForm.model_answer.trim() || null,
+          question_type: manualForm.question_type,
+          difficulty: manualForm.difficulty,
+          marks: Number(manualForm.marks) || 1,
+          topic: manualForm.topic.trim() || null,
+          category_id: manualForm.category_id || null,
+          options:
+            manualForm.question_type === "mcq"
+              ? manualForm.optionsText.split("\n").map((x) => x.trim()).filter(Boolean)
+              : null,
+        })
+        setLast((prev) => {
+          if (!prev?.questions?.length) return prev
+          return {
+            ...prev,
+            questions: prev.questions.map((x) => (x.id === row.id ? row : x)),
+          }
+        })
+        if (mode === MODE.BANK) {
+          setBank((curr) => curr.map((x) => (x.id === row.id ? row : x)))
+        }
+        setInfoNotice("Question updated.")
+        resetManualModal()
+      }
+    } catch (err) {
+      setError(err?.message || "Could not save question.")
+    } finally {
+      setManualSaving(false)
+    }
+  }
+
   // ---------- ACTIONS ----------
 
   const onSavePastedContent = async () => {
@@ -243,6 +382,7 @@ export default function TeacherGenerateExamPage() {
 
   const onGenerateQuestionsOnly = async () => {
     setError("")
+    setInfoNotice("")
     if (mode === MODE.BANK) {
       setError("Question generation requires source content. Switch to “Saved content” or “Paste new”.")
       return
@@ -302,6 +442,7 @@ export default function TeacherGenerateExamPage() {
 
   const onGenerateExam = async () => {
     setError("")
+    setInfoNotice("")
     if (!cfg.title.trim()) {
       setError("Give the exam a title first.")
       return
@@ -437,6 +578,12 @@ export default function TeacherGenerateExamPage() {
           <p className="flex-1">{error}</p>
         </div>
       ) : null}
+      {infoNotice ? (
+        <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <p className="flex-1">{infoNotice}</p>
+        </div>
+      ) : null}
 
       <div className="grid min-h-[640px] grid-cols-1 gap-4 xl:grid-cols-12">
         {/* LEFT: content picker */}
@@ -506,6 +653,7 @@ export default function TeacherGenerateExamPage() {
               onChangeQuery={setBankQuery}
               onTogglePick={togglePick}
               onClearSelection={() => setPicked(new Set())}
+              onAddCustom={openAddManualQuestion}
               onSelectVisible={(ids) => {
                 setPicked((prev) => {
                   const next = new Set(prev)
@@ -528,6 +676,7 @@ export default function TeacherGenerateExamPage() {
             mode={mode}
             onGenerateExam={onGenerateExam}
             onGenerateQuestionsOnly={onGenerateQuestionsOnly}
+            onAddManualQuestion={openAddManualQuestion}
             picked={picked}
             selectedBankSummary={selectedBankSummary}
           />
@@ -536,6 +685,7 @@ export default function TeacherGenerateExamPage() {
               data={last}
               onOpenReview={() => last.exam && navigate(`/teacher-dashboard/exams/${last.exam.id}/review`)}
               onOpenBank={() => navigate("/teacher-dashboard/question-bank")}
+              onEditQuestion={openEditGeneratedQuestion}
             />
           ) : null}
           <PreviousExamsPanel
@@ -545,6 +695,17 @@ export default function TeacherGenerateExamPage() {
           />
         </div>
       </div>
+
+      <ManualQuestionModal
+        open={Boolean(manualModal && manualForm)}
+        isEdit={manualModal?.mode === "edit"}
+        form={manualForm}
+        categories={categories}
+        saving={manualSaving}
+        onChange={setManualForm}
+        onSubmit={submitManualQuestion}
+        onClose={closeManualModal}
+      />
     </div>
   )
 }
@@ -694,6 +855,171 @@ function PasteContentEditor({
   )
 }
 
+function ManualQuestionModal({ open, isEdit, form, categories, saving, onChange, onSubmit, onClose }) {
+  if (!open || !form) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-end justify-center overflow-y-auto overscroll-contain sm:items-center sm:p-4"
+      role="presentation"
+    >
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={saving ? undefined : onClose}
+        className="fixed inset-0 bg-[#0f1730]/40 backdrop-blur-[2px]"
+      />
+      <form
+        onSubmit={onSubmit}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="manual-q-title"
+        className="relative z-10 flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-[#e7eaf3] bg-white shadow-[0_-8px_40px_rgba(15,23,48,0.12)] sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:shadow-[0_20px_60px_rgba(15,23,48,0.15)]"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-[#eef1f7] p-5">
+          <div>
+            <h2 id="manual-q-title" className="text-lg font-semibold text-[#151d3a]">
+              {isEdit ? "Edit question" : "Add manual question"}
+            </h2>
+            <p className="mt-1 text-xs text-[#7f88a6]">
+              {isEdit
+                ? "Updates are saved to your question bank (and reflected in any summary below)."
+                : "Creates a normal bank question you can tick in “From question bank” or mix with AI-generated items."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={saving ? undefined : onClose}
+            className="rounded-lg p-2 text-[#596286] hover:bg-[#f6f7fc]"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-sm">
+              <span className="text-[#5d6580]">Type</span>
+              <select
+                value={form.question_type}
+                onChange={(e) => onChange((f) => ({ ...f, question_type: e.target.value }))}
+                className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm outline-none focus:border-[#6562f1]"
+              >
+                <option value="mcq">MCQ</option>
+                <option value="short">Short</option>
+                <option value="essay">Essay</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="text-[#5d6580]">Difficulty</span>
+              <select
+                value={form.difficulty}
+                onChange={(e) => onChange((f) => ({ ...f, difficulty: e.target.value }))}
+                className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm outline-none focus:border-[#6562f1]"
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="text-[#5d6580]">Marks</span>
+              <input
+                type="number"
+                min={1}
+                value={form.marks}
+                onChange={(e) => onChange((f) => ({ ...f, marks: Number(e.target.value) }))}
+                className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="text-[#5d6580]">Subject</span>
+              <select
+                value={form.category_id}
+                onChange={(e) => onChange((f) => ({ ...f, category_id: e.target.value }))}
+                className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm outline-none focus:border-[#6562f1]"
+              >
+                <option value="">Uncategorized</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="block text-sm">
+            <span className="text-[#5d6580]">Topic</span>
+            <input
+              value={form.topic}
+              onChange={(e) => onChange((f) => ({ ...f, topic: e.target.value }))}
+              className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
+              placeholder="Optional"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="text-[#5d6580]">Question text</span>
+            <textarea
+              rows={4}
+              value={form.prompt}
+              onChange={(e) => onChange((f) => ({ ...f, prompt: e.target.value }))}
+              className="mt-1 w-full resize-y rounded-xl border border-[#e3e6ef] px-3 py-2 text-sm outline-none focus:border-[#6562f1]"
+              required
+            />
+          </label>
+
+          {form.question_type === "mcq" ? (
+            <label className="block text-sm">
+              <span className="text-[#5d6580]">MCQ options</span>
+              <textarea
+                rows={5}
+                value={form.optionsText}
+                onChange={(e) => onChange((f) => ({ ...f, optionsText: e.target.value }))}
+                className="mt-1 w-full resize-y rounded-xl border border-[#e3e6ef] px-3 py-2 font-mono text-xs outline-none focus:border-[#6562f1]"
+                placeholder={"One option per line\nA\nB\nC\nD"}
+              />
+              <span className="mt-1 block text-xs text-[#8a93ad]">At least two non-empty lines required.</span>
+            </label>
+          ) : null}
+
+          <label className="block text-sm">
+            <span className="text-[#5d6580]">Model answer / key</span>
+            <textarea
+              rows={3}
+              value={form.model_answer}
+              onChange={(e) => onChange((f) => ({ ...f, model_answer: e.target.value }))}
+              className="mt-1 w-full resize-y rounded-xl border border-[#e3e6ef] px-3 py-2 text-sm outline-none focus:border-[#6562f1]"
+              placeholder="Correct answer or marking guide"
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-[#eef1f7] p-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={saving ? undefined : onClose}
+            disabled={saving}
+            className="h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-4 text-sm font-semibold text-[#313a58] disabled:opacity-60 sm:w-auto"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !form.prompt.trim()}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {saving ? "Saving…" : isEdit ? "Save changes" : "Add to bank"}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 function BankPicker({
   bank,
   loading,
@@ -705,6 +1031,7 @@ function BankPicker({
   onTogglePick,
   onSelectVisible,
   onClearSelection,
+  onAddCustom,
 }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -730,6 +1057,17 @@ function BankPicker({
           <p className="mt-1 text-xs text-[#7f88a6]">
             {loading ? "Loading…" : `${bank.length} questions available`} · {picked.size} selected
           </p>
+          {onAddCustom ? (
+            <button
+              type="button"
+              onClick={onAddCustom}
+              disabled={loading}
+              className="mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-[#6562f1] bg-[#f6f5ff] px-3 text-xs font-semibold text-[#5f4ce6] transition hover:bg-[#edeafd] disabled:opacity-50 sm:w-auto"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add manual question
+            </button>
+          ) : null}
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
@@ -845,6 +1183,7 @@ function ConfigPanel({
   mode,
   onGenerateExam,
   onGenerateQuestionsOnly,
+  onAddManualQuestion,
   picked,
   selectedBankSummary,
 }) {
@@ -967,12 +1306,23 @@ function ConfigPanel({
             {savingQuestions ? "Generating questions…" : "Add to question bank only"}
           </button>
         ) : null}
+        {onAddManualQuestion ? (
+          <button
+            type="button"
+            disabled={generating || savingQuestions}
+            onClick={onAddManualQuestion}
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#c9c4f5] bg-[#fafbff] text-xs font-semibold text-[#5f4ce6] transition hover:bg-[#f1efff] disabled:opacity-60"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {isBank ? "Add manual question (auto-selected)" : "Add manual question to bank"}
+          </button>
+        ) : null}
       </div>
     </section>
   )
 }
 
-function GeneratedSummary({ data, onOpenReview, onOpenBank }) {
+function GeneratedSummary({ data, onOpenReview, onOpenBank, onEditQuestion }) {
   const isExam = !!data?.exam
   return (
     <section className="rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm">
@@ -988,10 +1338,15 @@ function GeneratedSummary({ data, onOpenReview, onOpenBank }) {
             {data.exam.duration_minutes} min · {data.exam.total_marks} marks ·{" "}
             {data.questions?.length || data.exam.total_questions || 0} questions
           </p>
+          <p className="mt-2 text-xs text-[#8a93ad]">
+            Use <span className="font-medium text-[#5d6580]">Edit</span> to fix wording or marks; changes save to your
+            question bank.
+          </p>
         </div>
       ) : (
         <p className="mt-2 text-xs text-[#7f88a6]">
-          {data.questions?.length || 0} new question{data.questions?.length === 1 ? "" : "s"} ready in your bank.
+          {data.questions?.length || 0} new question{data.questions?.length === 1 ? "" : "s"} ready in your bank. Edit
+          any item below before compiling an exam.
         </p>
       )}
 
@@ -1015,24 +1370,34 @@ function GeneratedSummary({ data, onOpenReview, onOpenBank }) {
       </div>
 
       {data.questions?.length ? (
-        <ol className="mt-4 space-y-2 max-h-[280px] overflow-y-auto pr-1">
-          {data.questions.slice(0, 6).map((q, i) => (
-            <li key={q.id} className="rounded-lg border border-[#e7eaf3] bg-[#fafbff] p-2.5 text-xs">
-              <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-[#8a93ad]">
-                <span className="rounded bg-[#f1efff] px-1.5 py-0.5 font-semibold text-[#5f4ce6]">
-                  Q{i + 1} · {q.question_type}
-                </span>
-                <span>{q.difficulty}</span>
-                <span>{q.marks} pts</span>
+        <ol className="mt-4 max-h-96 space-y-2 overflow-y-auto pr-1">
+          {data.questions.map((q, i) => (
+            <li
+              key={q.id}
+              className="flex flex-col gap-2 rounded-lg border border-[#e7eaf3] bg-[#fafbff] p-2.5 text-xs sm:flex-row sm:items-start"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-[#8a93ad]">
+                  <span className="rounded bg-[#f1efff] px-1.5 py-0.5 font-semibold text-[#5f4ce6]">
+                    Q{i + 1} · {q.question_type}
+                  </span>
+                  <span>{q.difficulty}</span>
+                  <span>{q.marks} pts</span>
+                </div>
+                <p className="mt-1 text-[#1a2341]">{q.prompt}</p>
               </div>
-              <p className="mt-1 line-clamp-2 text-[#1a2341]">{q.prompt}</p>
+              {onEditQuestion ? (
+                <button
+                  type="button"
+                  onClick={() => onEditQuestion(q)}
+                  className="inline-flex shrink-0 items-center justify-center gap-1 self-start rounded-lg border border-[#e3e6ef] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#313a58] hover:bg-white"
+                >
+                  <Pencil className="h-3 w-3" />
+                  Edit
+                </button>
+              ) : null}
             </li>
           ))}
-          {data.questions.length > 6 ? (
-            <li className="text-center text-[11px] text-[#8a93ad]">
-              + {data.questions.length - 6} more in your {isExam ? "paper" : "bank"}
-            </li>
-          ) : null}
         </ol>
       ) : null}
     </section>

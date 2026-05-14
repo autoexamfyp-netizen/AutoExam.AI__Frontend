@@ -10,6 +10,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  Plus,
   Sparkles,
   Trash2,
   X,
@@ -22,6 +23,7 @@ import GeneratedPaperCard from "../../components/questions/GeneratedPaperCard"
 import ExamQuestionsModal from "../../components/questions/ExamQuestionsModal"
 import { fetchCategories } from "../../services/categoryService"
 import {
+  createQuestion,
   deleteQuestion,
   deleteQuestions,
   fetchQuestionBank,
@@ -73,6 +75,7 @@ export default function TeacherQuestionBankPage() {
   const [editingQuestion, setEditingQuestion] = useState(null)
   const [editForm, setEditForm] = useState(null)
   const [editSaving, setEditSaving] = useState(false)
+  const [isCreateQuestion, setIsCreateQuestion] = useState(false)
   const [selectedQuestionIds, setSelectedQuestionIds] = useState(() => new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [renameBusy, setRenameBusy] = useState(false)
@@ -219,7 +222,25 @@ export default function TeacherQuestionBankPage() {
     })
   }
 
+  const emptyQuestionForm = () => ({
+    prompt: "",
+    model_answer: "",
+    question_type: "short",
+    difficulty: "medium",
+    marks: 2,
+    topic: "",
+    category_id: activeSubject !== ALL_ID && activeSubject !== UNCAT_ID ? activeSubject : "",
+    optionsText: "",
+  })
+
+  const onCreateQuestion = () => {
+    setIsCreateQuestion(true)
+    setEditingQuestion(null)
+    setEditForm(emptyQuestionForm())
+  }
+
   const onEditQuestion = (question) => {
+    setIsCreateQuestion(false)
     setEditingQuestion(question)
     setEditForm({
       prompt: question.prompt || "",
@@ -235,33 +256,67 @@ export default function TeacherQuestionBankPage() {
 
   const onSaveQuestionEdit = async (e) => {
     e.preventDefault()
-    if (!editingQuestion || !editForm || editSaving) return
+    if (!editForm || editSaving) return
+    if (!isCreateQuestion && !editingQuestion) return
     if (!editForm.prompt.trim()) {
       showToast("Question text is required")
       return
     }
+    if (editForm.question_type === "mcq") {
+      const opts = editForm.optionsText
+        .split("\n")
+        .map((x) => x.trim())
+        .filter(Boolean)
+      if (opts.length < 2) {
+        showToast("Add at least two MCQ options (one per line).")
+        return
+      }
+    }
     setEditSaving(true)
     try {
-      const updated = await updateQuestion(editingQuestion.id, {
-        prompt: editForm.prompt.trim(),
-        model_answer: editForm.model_answer.trim() || null,
-        question_type: editForm.question_type,
-        difficulty: editForm.difficulty,
-        marks: Number(editForm.marks) || 1,
-        topic: editForm.topic.trim() || null,
-        category_id: editForm.category_id || null,
-        options:
-          editForm.question_type === "mcq"
-            ? editForm.optionsText
-                .split("\n")
-                .map((x) => x.trim())
-                .filter(Boolean)
-            : null,
-      })
-      setQuestions((curr) => curr.map((x) => (x.id === updated.id ? updated : x)))
+      if (isCreateQuestion) {
+        const created = await createQuestion({
+          prompt: editForm.prompt.trim(),
+          model_answer: editForm.model_answer.trim() || null,
+          question_type: editForm.question_type,
+          difficulty: editForm.difficulty,
+          marks: Number(editForm.marks) || 1,
+          topic: editForm.topic.trim() || null,
+          category_id: editForm.category_id || null,
+          options:
+            editForm.question_type === "mcq"
+              ? editForm.optionsText
+                  .split("\n")
+                  .map((x) => x.trim())
+                  .filter(Boolean)
+              : null,
+          ai_generated: false,
+        })
+        setQuestions((curr) => [created, ...curr])
+        showToast("Question added to bank")
+      } else {
+        const updated = await updateQuestion(editingQuestion.id, {
+          prompt: editForm.prompt.trim(),
+          model_answer: editForm.model_answer.trim() || null,
+          question_type: editForm.question_type,
+          difficulty: editForm.difficulty,
+          marks: Number(editForm.marks) || 1,
+          topic: editForm.topic.trim() || null,
+          category_id: editForm.category_id || null,
+          options:
+            editForm.question_type === "mcq"
+              ? editForm.optionsText
+                  .split("\n")
+                  .map((x) => x.trim())
+                  .filter(Boolean)
+              : null,
+        })
+        setQuestions((curr) => curr.map((x) => (x.id === updated.id ? updated : x)))
+        showToast("Question updated")
+      }
       setEditingQuestion(null)
       setEditForm(null)
-      showToast("Question updated")
+      setIsCreateQuestion(false)
     } catch (err) {
       showToast(err?.message || "Save failed")
     } finally {
@@ -510,6 +565,14 @@ export default function TeacherQuestionBankPage() {
             </div>
             {activeTab === TAB.QUESTIONS ? (
               <>
+                <button
+                  type="button"
+                  onClick={onCreateQuestion}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#6562f1] px-3 text-xs font-semibold text-white shadow-sm hover:bg-[#5a56e2]"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add question
+                </button>
                 <select
                   className="rounded-xl border border-[#e3e6ef] bg-white px-3 py-2 text-sm"
                   value={filterDifficulty}
@@ -616,7 +679,8 @@ export default function TeacherQuestionBankPage() {
       />
 
       <QuestionEditDialog
-        open={Boolean(editingQuestion && editForm)}
+        open={Boolean(editForm && (isCreateQuestion || editingQuestion))}
+        isCreate={isCreateQuestion}
         form={editForm}
         categories={categories}
         saving={editSaving}
@@ -626,6 +690,7 @@ export default function TeacherQuestionBankPage() {
           if (editSaving) return
           setEditingQuestion(null)
           setEditForm(null)
+          setIsCreateQuestion(false)
         }}
       />
       <RenameDialog
@@ -684,7 +749,7 @@ export default function TeacherQuestionBankPage() {
 // Subcomponents
 // =============================================================================
 
-function QuestionEditDialog({ open, form, categories, saving, onChange, onSubmit, onClose }) {
+function QuestionEditDialog({ open, isCreate, form, categories, saving, onChange, onSubmit, onClose }) {
   if (!open || !form) return null
 
   return (
@@ -708,10 +773,12 @@ function QuestionEditDialog({ open, form, categories, saving, onChange, onSubmit
         <div className="flex items-start justify-between gap-3 border-b border-[#eef1f7] p-5">
           <div>
             <h2 id="question-edit-title" className="text-lg font-semibold text-[#151d3a]">
-              Edit question
+              {isCreate ? "Add question" : "Edit question"}
             </h2>
             <p className="mt-1 text-xs text-[#7f88a6]">
-              Update question text, answer key, metadata, and MCQ options in one place.
+              {isCreate
+                ? "Create a manual question for your bank. You can include it when compiling an exam from the question bank."
+                : "Update question text, answer key, metadata, and MCQ options in one place."}
             </p>
           </div>
           <button
@@ -839,7 +906,7 @@ function QuestionEditDialog({ open, form, categories, saving, onChange, onSubmit
             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {saving ? "Saving..." : "Save changes"}
+            {saving ? "Saving..." : isCreate ? "Add to bank" : "Save changes"}
           </button>
         </div>
       </form>
