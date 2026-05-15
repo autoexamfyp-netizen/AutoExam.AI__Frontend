@@ -29,7 +29,7 @@ export default function OtpVerifyPage() {
             </div>
             <h1 className="max-w-[340px] text-4xl font-bold leading-tight tracking-[-1px]">Verification</h1>
           </div>
-          <p className="relative z-10 text-sm text-[#9ca8cc]">© 2025 AutoExam.ai</p>
+          <p className="relative z-10 text-sm text-[#9ca8cc]">© 2026 AutoExam.ai</p>
         </aside>
         <section className="flex flex-1 items-center justify-center px-4 py-12">
           <div className="max-w-md rounded-2xl border border-[#e3e6ef] bg-white p-8 text-center shadow-sm">
@@ -76,7 +76,7 @@ export default function OtpVerifyPage() {
             Use the one-time code from your email to continue securely.
           </p>
         </div>
-        <p className="relative z-10 text-sm text-[#9ca8cc]">© 2025 AutoExam.ai · COMSATS University Islamabad</p>
+        <p className="relative z-10 text-sm text-[#9ca8cc]">© 2026 AutoExam.ai (COMSATS University Islamabad, Lahore)</p>
       </aside>
 
       <section className="flex min-h-screen w-full items-center justify-center px-4 py-8 sm:px-8 lg:w-[58%]">

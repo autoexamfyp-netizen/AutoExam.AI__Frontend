@@ -11,6 +11,7 @@
  */
 
 import { supabase } from "../lib/supabaseClient"
+import { requireTeacherId } from "../lib/teacherScope"
 import { apiPost } from "./apiClient"
 
 const TABLE = "question_bank"
@@ -76,7 +77,12 @@ export async function fetchQuestionBank(opts = {}) {
   const { categoryId } = opts
   console.log("📂 Fetching question bank...", categoryId ? { categoryId } : {})
 
-  let q = supabase.from(TABLE).select(SELECT_FULL).order("created_at", { ascending: false })
+  const teacherId = await requireTeacherId()
+  let q = supabase
+    .from(TABLE)
+    .select(SELECT_FULL)
+    .eq("created_by", teacherId)
+    .order("created_at", { ascending: false })
   if (categoryId === "__uncategorized__") q = q.is("category_id", null)
   else if (categoryId) q = q.eq("category_id", categoryId)
 
@@ -101,13 +107,21 @@ export async function updateQuestion(id, patch) {
   if (patch.question_type) payload.question_type = patch.question_type
   if (patch.category_id !== undefined) payload.category_id = patch.category_id
 
-  const { data, error } = await supabase.from(TABLE).update(payload).eq("id", id).select(SELECT_FULL).single()
+  const teacherId = await requireTeacherId()
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(payload)
+    .eq("id", id)
+    .eq("created_by", teacherId)
+    .select(SELECT_FULL)
+    .single()
   if (error) throw friendly(error, "Failed to update question.")
   return data
 }
 
 export async function deleteQuestion(id) {
-  const { error } = await supabase.from(TABLE).delete().eq("id", id)
+  const teacherId = await requireTeacherId()
+  const { error } = await supabase.from(TABLE).delete().eq("id", id).eq("created_by", teacherId)
   if (error) throw friendly(error, "Failed to delete question.")
   return true
 }
@@ -115,7 +129,8 @@ export async function deleteQuestion(id) {
 export async function deleteQuestions(ids) {
   const cleanIds = Array.from(new Set((ids || []).filter(Boolean)))
   if (!cleanIds.length) return true
-  const { error } = await supabase.from(TABLE).delete().in("id", cleanIds)
+  const teacherId = await requireTeacherId()
+  const { error } = await supabase.from(TABLE).delete().eq("created_by", teacherId).in("id", cleanIds)
   if (error) throw friendly(error, "Failed to delete selected questions.")
   return true
 }

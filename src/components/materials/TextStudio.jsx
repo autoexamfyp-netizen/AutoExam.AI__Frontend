@@ -468,8 +468,7 @@ export default function TextStudio({
             </div>
             <p className="mt-3 text-base font-semibold text-[#151d3a]">No content open</p>
             <p className="mt-1 max-w-md text-sm text-[#7f88a6]">
-              Create a new note or pick one from the list. Saved text is the source of truth for question generation —
-              PDFs in the Files tab are storage-only.
+              Create a new note or pick one from the list. Saved text is the source of truth for question generation.
             </p>
             <button
               type="button"

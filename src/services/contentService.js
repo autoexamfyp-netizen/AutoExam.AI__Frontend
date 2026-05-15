@@ -4,6 +4,7 @@
  */
 
 import { supabase } from "../lib/supabaseClient"
+import { requireTeacherId } from "../lib/teacherScope"
 
 const TABLE = "text_materials"
 
@@ -31,7 +32,12 @@ export async function fetchTextMaterials(opts = {}) {
   const { categoryId, uncategorizedOnly } = opts
   console.log("📂 Fetching text materials...", opts)
 
-  let q = supabase.from(TABLE).select(SELECT_FULL).order("updated_at", { ascending: false })
+  const teacherId = await requireTeacherId()
+  let q = supabase
+    .from(TABLE)
+    .select(SELECT_FULL)
+    .eq("created_by", teacherId)
+    .order("updated_at", { ascending: false })
   if (uncategorizedOnly) q = q.is("category_id", null)
   else if (categoryId) q = q.eq("category_id", categoryId)
 
@@ -81,7 +87,14 @@ export async function updateTextMaterial(id, patch) {
   if (typeof patch.content === "string") payload.content = patch.content
   if ("categoryId" in patch) payload.category_id = patch.categoryId
 
-  const { data, error } = await supabase.from(TABLE).update(payload).eq("id", id).select(SELECT_FULL).single()
+  const teacherId = await requireTeacherId()
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(payload)
+    .eq("id", id)
+    .eq("created_by", teacherId)
+    .select(SELECT_FULL)
+    .single()
   if (error) {
     console.error("❌ Update text content failed:", error.message)
     throw friendly(error, "Failed to update content.")
@@ -95,7 +108,8 @@ export async function updateTextMaterial(id, patch) {
  */
 export async function deleteTextMaterial(id) {
   console.log("🗑️ Deleting content:", id)
-  const { error } = await supabase.from(TABLE).delete().eq("id", id)
+  const teacherId = await requireTeacherId()
+  const { error } = await supabase.from(TABLE).delete().eq("id", id).eq("created_by", teacherId)
   if (error) {
     console.error("❌ Delete text content failed:", error.message)
     throw friendly(error, "Failed to delete content.")
@@ -127,9 +141,11 @@ export async function duplicateTextMaterial(row) {
  */
 export async function fetchQuestionCountsByText(textMaterialIds) {
   if (!textMaterialIds.length) return new Map()
+  const teacherId = await requireTeacherId()
   const { data, error } = await supabase
     .from("question_bank")
     .select("text_material_id")
+    .eq("created_by", teacherId)
     .in("text_material_id", textMaterialIds)
 
   if (error) {

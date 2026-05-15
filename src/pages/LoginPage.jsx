@@ -2,23 +2,19 @@ import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { AtSign, GraduationCap, Lock, ShieldCheck, Sparkles, Zap } from "lucide-react"
 import { supabase } from "../lib/supabaseClient"
-import { dashboardPathForRole, isEmailVerified, resolveRole } from "../auth/roles"
+import { dashboardPathForRole, isEmailVerified, resolveRole, ROLES } from "../auth/roles"
 import { formatAuthError } from "../auth/formatAuthError"
 import PasswordInput from "../components/ui/PasswordInput"
 import { useLoading } from "../hooks/useLoading"
 
 const roleDetails = {
   teacher: {
-    subtitle: "Sign in to your teacher account",
-    buttonText: "Sign In as Teacher",
-    demoText: "Fill teacher sample credentials",
-    demoEmail: "teacher@autoexam.com",
+    subtitle: "Sign in to your account",
+    buttonText: "Sign In",
   },
   student: {
-    subtitle: "Sign in to your student account",
-    buttonText: "Sign In as Student",
-    demoText: "Fill student sample credentials",
-    demoEmail: "student@autoexam.com",
+    subtitle: "Sign in to your account",
+    buttonText: "Sign In",
   },
 }
 
@@ -40,7 +36,7 @@ function AuthShowcase() {
           Smarter Exams. Fairer Feedback.
         </h1>
         <p className="mt-5 max-w-[420px] text-lg leading-[1.45] text-[#a9b4d4] sm:text-xl">
-          AI-powered exam generation, semantic grading, and AI cheating detection for modern educators.
+          AI powered exam generation, semantic grading, and AI cheating detection for modern educators.
         </p>
 
         <ul className="mt-12 space-y-5 text-base text-[#e4e8f7] sm:text-lg">
@@ -54,7 +50,7 @@ function AuthShowcase() {
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/10">
               <ShieldCheck className="h-5 w-5 text-[#8492ff]" />
             </span>
-            Detect AI-written submissions
+            Detect AI written submissions
           </li>
           <li className="flex items-center gap-4">
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/10">
@@ -67,13 +63,11 @@ function AuthShowcase() {
 
       <div className="relative z-10">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-          <p className="text-xs tracking-[0.16em] text-[#bec8e6]">SAMPLE CREDENTIALS</p>
-          <div className="mt-3 space-y-2 text-sm text-[#d6dcf0]">
-            <p>Teacher &nbsp;&nbsp;&nbsp;&nbsp; teacher@autoexam.com &nbsp;/&nbsp; 12345678</p>
-            <p>Student &nbsp;&nbsp;&nbsp;&nbsp; student@autoexam.com &nbsp;/&nbsp; 12345678</p>
-          </div>
+          <p className="text-sm leading-relaxed text-[#d6dcf0]">
+            Use the email and password you registered with. Need an account? Request access from the sign up page.
+          </p>
         </div>
-        <p className="mt-6 text-sm text-[#9ca8cc]">© 2025 AutoExam.ai · COMSATS University Islamabad</p>
+        <p className="mt-6 text-sm text-[#9ca8cc]">© 2026 AutoExam.ai (COMSATS University Islamabad, Lahore)</p>
       </div>
     </aside>
   )
@@ -125,27 +119,6 @@ export default function LoginPage() {
     return ""
   }
 
-  const handleGoogleLogin = async () => {
-    setError("")
-
-    if (!import.meta.env.VITE_GOOGLE_CLIENT_ID) {
-      setError("Google OAuth is not configured.")
-      return
-    }
-
-    await run(async () => {
-      setLoading(true)
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?role=${role}`,
-        },
-      })
-      setLoading(false)
-      if (oauthError) setError(oauthError.message)
-    }, "Connecting to Google…")
-  }
-
   const handleLogin = async (event) => {
     event.preventDefault()
     setError("")
@@ -180,7 +153,18 @@ export default function LoginPage() {
         return
       }
 
-      const userRole = resolveRole(signedInUser) || role
+      const accountRole = resolveRole(signedInUser)
+      if (accountRole && accountRole !== role) {
+        await supabase.auth.signOut()
+        const accountLabel = accountRole === ROLES.STUDENT ? "Student" : "Teacher"
+        const selectedLabel = role === ROLES.STUDENT ? "Student" : "Teacher"
+        setError(
+          `This email is registered as a ${accountLabel} account, but you have "${selectedLabel}" selected at the top. Switch the role toggle to ${accountLabel}, then sign in again.`,
+        )
+        return
+      }
+
+      const userRole = accountRole || role
       const target = dashboardPathForRole(userRole)
       const from = location.state?.from
       if (typeof from === "string" && from.startsWith("/") && !from.startsWith("//")) {
@@ -189,12 +173,6 @@ export default function LoginPage() {
       }
       navigate(target, { replace: true })
     }, "Signing in…")
-  }
-
-  const fillDemo = () => {
-    setEmail(details.demoEmail)
-    setPassword("12345678")
-    setError("")
   }
 
   return (
@@ -208,24 +186,12 @@ export default function LoginPage() {
 
           <div className="mt-7">
             <RoleToggle role={role} onChange={setRole} />
+            <p className="mt-2 text-xs text-[#99a0b7]">
+              Use the same role you selected when you created this account (Teacher vs Student).
+            </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="mt-5 h-12 w-full rounded-xl border border-[#e3e6ef] bg-white text-base font-medium text-[#1b1f36] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Continue with Google
-          </button>
-
-          <div className="my-6 flex items-center gap-3 text-sm text-[#99a0b7]">
-            <div className="h-px flex-1 bg-[#e3e6ef]" />
-            or sign in with email
-            <div className="h-px flex-1 bg-[#e3e6ef]" />
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="mt-8 space-y-4">
             {flashCode === "password_reset" ? (
               <p className="text-sm text-green-600">Your password was updated. Sign in with your new password.</p>
             ) : null}
@@ -273,15 +239,6 @@ export default function LoginPage() {
               className="h-12 w-full rounded-xl bg-[#6562f1] text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Signing in..." : details.buttonText}
-            </button>
-
-            <button
-              type="button"
-              onClick={fillDemo}
-              disabled={loading}
-              className="h-11 w-full rounded-xl border border-[#e3e6ef] bg-white text-sm text-[#585f79] disabled:opacity-60"
-            >
-              {details.demoText}
             </button>
           </form>
 

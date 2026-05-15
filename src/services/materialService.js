@@ -16,6 +16,7 @@
  */
 
 import { supabase } from "../lib/supabaseClient"
+import { requireTeacherId } from "../lib/teacherScope"
 
 const TABLE = "materials"
 
@@ -165,8 +166,13 @@ export async function saveMaterial(args) {
 export async function fetchMaterials(opts = {}) {
   const { categoryId } = opts
   console.log("📥 Fetching materials...", categoryId ? { categoryId } : {})
+  const teacherId = await requireTeacherId()
 
-  let query = supabase.from(TABLE).select(SELECT_WITH_CATEGORY).order("created_at", { ascending: false })
+  let query = supabase
+    .from(TABLE)
+    .select(SELECT_WITH_CATEGORY)
+    .eq("uploaded_by", teacherId)
+    .order("created_at", { ascending: false })
   if (categoryId === "__uncategorized__") {
     query = query.is("category_id", null)
   } else if (categoryId) {
@@ -190,10 +196,12 @@ export async function fetchMaterials(opts = {}) {
  */
 export async function renameMaterial(id, title) {
   console.log("✏️ Renaming material...", { id, title })
+  const teacherId = await requireTeacherId()
   const { data, error } = await supabase
     .from(TABLE)
     .update({ title, updated_at: new Date().toISOString() })
     .eq("id", id)
+    .eq("uploaded_by", teacherId)
     .select(SELECT_WITH_CATEGORY)
     .single()
 
@@ -213,10 +221,12 @@ export async function renameMaterial(id, title) {
  */
 export async function moveMaterial(id, categoryId) {
   console.log("🔀 Moving material to category:", { id, categoryId })
+  const teacherId = await requireTeacherId()
   const { data, error } = await supabase
     .from(TABLE)
     .update({ category_id: categoryId, updated_at: new Date().toISOString() })
     .eq("id", id)
+    .eq("uploaded_by", teacherId)
     .select(SELECT_WITH_CATEGORY)
     .single()
 
@@ -235,7 +245,8 @@ export async function moveMaterial(id, categoryId) {
  */
 export async function deleteMaterial(id) {
   console.log("🗑️ Deleting material...", { id })
-  const { error } = await supabase.from(TABLE).delete().eq("id", id)
+  const teacherId = await requireTeacherId()
+  const { error } = await supabase.from(TABLE).delete().eq("id", id).eq("uploaded_by", teacherId)
   if (error) {
     console.error("❌ Delete Failed:", error.message)
     throw friendlyError(error, "Failed to delete material.")

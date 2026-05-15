@@ -58,7 +58,7 @@ export default function ForgotPasswordPage() {
             We will email you a secure link to choose a new password.
           </p>
         </div>
-        <p className="relative z-10 text-sm text-[#9ca8cc]">© 2025 AutoExam.ai · COMSATS University Islamabad</p>
+        <p className="relative z-10 text-sm text-[#9ca8cc]">© 2026 AutoExam.ai (COMSATS University Islamabad, Lahore)</p>
       </aside>
 
       <section className="flex min-h-screen w-full items-center justify-center px-4 py-8 sm:px-8 lg:w-[58%]">
@@ -112,12 +112,12 @@ export default function ForgotPasswordPage() {
                 {loading ? "Sending…" : "Send reset link"}
               </button>
               <p className="mt-4 text-center text-sm text-[#6f7692]">
-                <Link
+                {/* <Link
                   to={`/auth/verify-otp?flow=recovery&email=${encodeURIComponent(email.trim() || "")}`}
                   className="font-medium text-[#6860f3]"
                 >
                   Already have a reset code?
-                </Link>
+                </Link> */}
               </p>
             </form>
           )}

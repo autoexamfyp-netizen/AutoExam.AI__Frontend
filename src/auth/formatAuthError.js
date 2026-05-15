@@ -38,7 +38,7 @@ export function formatVerificationError(errorCode, description) {
   if (code.includes("otp_expired") || desc.includes("expired")) {
     return {
       title: "Link expired",
-      detail: "This confirmation or reset link has expired. Request a new email from the sign-in or sign-up page.",
+      detail: "This confirmation or reset link has expired. Request a new email from the sign in or sign-up page.",
     }
   }
   if (code.includes("access_denied") || desc.includes("invalid")) {

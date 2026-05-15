@@ -60,7 +60,7 @@ export default function AuthCallbackPage() {
   return (
     <FullPageLoader
       title={message}
-      subtitle="Please wait while we finish email confirmation or Google sign-in."
+      subtitle="Please wait while we finish email confirmation or Google sign in."
       footer={
         <p className="text-center text-xs text-[#99a0b7]">
           If this takes too long, confirm{" "}

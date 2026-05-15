@@ -136,15 +136,14 @@ export default function TeacherLayout() {
                 <Menu className="h-5 w-5" />
               </button>
               <div className="min-w-0">
-                <p className="truncate text-xs font-medium uppercase tracking-wider text-[#9aa3c2]">Teacher</p>
-                <p className="truncate text-sm font-semibold text-[#151d3a]">Control center</p>
+                <p className="truncate text-xs font-medium uppercase tracking-wider text-black">Dashboard</p>
               </div>
             </div>
             <div className="hidden min-w-0 items-center gap-2 sm:flex">
-              <span className="rounded-full border border-[#e8ebf4] bg-white px-3 py-1 text-xs font-medium text-[#5d6580]">
+              {/* <span className="rounded-full border border-[#e8ebf4] bg-white px-3 py-1 text-xs font-medium text-[#5d6580]">
                 <GraduationCap className="mr-1 inline h-3.5 w-3.5 text-[#6562f1]" />
                 AI workspace
-              </span>
+              </span> */}
               <div className="flex items-center gap-2 rounded-full border border-[#e8ebf4] bg-white px-2 py-1">
                 <div className="grid h-8 w-8 place-items-center rounded-full bg-[#ede9ff] text-xs font-semibold text-[#5f4ce6]">
                   {userName.charAt(0).toUpperCase()}
@@ -158,7 +157,7 @@ export default function TeacherLayout() {
             {error ? (
               <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
             ) : null}
-            <Outlet />
+            <Outlet key={user?.id ?? "signed-out"} />
           </main>
         </div>
       </div>

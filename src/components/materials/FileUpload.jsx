@@ -170,53 +170,6 @@ export default function FileUpload({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl border border-[#e7eaf3] bg-white p-3 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1">
-            <label
-              htmlFor={selectId}
-              className="block text-xs font-semibold uppercase tracking-wide text-[#9aa3c2]"
-            >
-              Upload to category
-            </label>
-            <select
-              id={selectId}
-              value={selectedCategoryId ?? ""}
-              onChange={(e) => {
-                setShowCategoryError(false)
-                onChangeCategory?.(e.target.value || null)
-              }}
-              className={`mt-1 h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition focus:border-[#6562f1] ${
-                showCategoryError && categoryRequiredMissing
-                  ? "border-red-300"
-                  : "border-[#e3e6ef]"
-              }`}
-            >
-              <option value="" disabled>
-                {categories.length ? "Choose a category…" : "No categories yet — create one"}
-              </option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
-          </div>
-          {onCreateCategory ? (
-            <button
-              type="button"
-              onClick={onCreateCategory}
-              className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm font-semibold text-[#5f4ce6] transition hover:bg-[#f6f7fc]"
-            >
-              <FolderPlus className="h-4 w-4" /> New category
-            </button>
-          ) : null}
-        </div>
-        {showCategoryError && categoryRequiredMissing ? (
-          <p className="mt-2 text-xs text-red-600">Pick a category before uploading.</p>
-        ) : null}
-      </div>
-
       <label
         htmlFor={inputId}
         onDragOver={(e) => {
@@ -245,7 +198,7 @@ export default function FileUpload({
               : `Drag & drop files into "${selectedCategory?.title}"`}
         </p>
         <p className="mt-1 text-xs text-[#7f88a6]">
-          or <span className="font-medium text-[#6562f1]">click to browse</span> · PDF, JPG, PNG, MP4
+          or <span className="font-medium text-[#6562f1]">click to browse</span> · PDF, JPG, PNG
         </p>
         <input
           id={inputId}

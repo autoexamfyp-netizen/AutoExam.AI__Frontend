@@ -59,7 +59,7 @@ export default function NotFoundPage() {
         </div>
 
         <div className="relative z-10">
-          <p className="text-sm text-[#9ca8cc]">© 2025 AutoExam.ai · COMSATS University Islamabad</p>
+          <p className="text-sm text-[#9ca8cc]">© 2026 AutoExam.ai (COMSATS University Islamabad, Lahore)</p>
         </div>
       </aside>
 

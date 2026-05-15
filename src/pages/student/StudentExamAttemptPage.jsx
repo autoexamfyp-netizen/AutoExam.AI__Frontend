@@ -267,7 +267,7 @@ function StudentExamAttemptContent({ publishedId }) {
     ) : lastSavedAt ? (
       <span className="text-[#8a93ad]">Last saved {lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
     ) : (
-      <span className="text-[#8a93ad]">Auto-save every {AUTO_SAVE_MS / 1000}s</span>
+      <span className="text-[#8a93ad]">auto save every {AUTO_SAVE_MS / 1000}s</span>
     )
 
   return (

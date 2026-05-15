@@ -51,7 +51,7 @@ const capabilityCards = [
   {
     icon: Sparkles,
     title: "AI Question Generation",
-    text: "GPT-powered questions across Bloom's Taxonomy levels - from recall to evaluation.",
+    text: "GPT powered questions across Bloom's Taxonomy levels fromrecall to evaluation.",
   },
   {
     icon: LineChart,
@@ -61,12 +61,12 @@ const capabilityCards = [
   {
     icon: ShieldCheck,
     title: "AI Answer Detection",
-    text: "GPTZero integration flags AI-written submissions above 70% confidence.",
+    text: "GPTZero integration flags AI written submissions above 70% confidence.",
   },
   {
     icon: MessageSquareText,
     title: "Personalized Feedback",
-    text: "Topic-wise breakdown with strengths, mistakes, and improvement suggestions.",
+    text: "Topic wise breakdown with strengths, mistakes, and improvement suggestions.",
   },
   {
     icon: ClipboardCheck,
@@ -76,7 +76,7 @@ const capabilityCards = [
   {
     icon: GraduationCap,
     title: "Student Portal",
-    text: "Clean timed interface with auto-save and submission progress tracking.",
+    text: "Clean timed interface with auto save and submission progress tracking.",
   },
 ]
 
@@ -84,12 +84,12 @@ const workflowSteps = [
   {
     icon: FileUp,
     title: "Upload Content",
-    text: "Upload your PDF, paste text, or provide a URL of course material.",
+    text: "Upload your PDF/PPT, paste text, or provide a URL of course material.",
   },
   {
     icon: Bot,
     title: "AI Generates Questions",
-    text: "GPT-powered MCQs, short-answer, and essay questions across Bloom's Taxonomy.",
+    text: "GPT powered MCQs, short answer, and essay questions across Bloom's Taxonomy.",
   },
   {
     icon: ClipboardCheck,
@@ -99,11 +99,11 @@ const workflowSteps = [
   {
     icon: MonitorCheck,
     title: "Students Attempt Exam",
-    text: "Browser-based timed interface with auto-save and progress tracking.",
+    text: "Browser based timed interface with auto save and progress tracking.",
   },
   {
     icon: BookOpenText,
-    title: "Auto-Evaluation & Feedback",
+    title: "Auto Evaluation & Feedback",
     text: "Semantic scoring, AI detection, and personalized feedback reports.",
   },
 ]
@@ -111,18 +111,18 @@ const workflowSteps = [
 const audienceCards = [
   {
     title: "Universities & Colleges",
-    text: "Handle large cohorts with automated assessment at scale. Reduce faculty workload while maintaining academic rigor across departments.",
-    points: ["Bulk exam generation", "Department-level analytics", "AI plagiarism monitoring"],
+    text: "Handle large cohorts with automated assessment at scale. Reduce faculty workload while maintaining academic across departments.",
+    points: ["Bulk exam generation", "Department level analytics", "AI plagiarism monitoring"],
   },
   {
     title: "Schools",
     text: "Give teachers time back with instant paper generation. Create fair, consistent exams for every grade level and subject.",
-    points: ["Grade-specific templates", "Instant paper creation", "Parent progress reports"],
+    points: ["Grade specific templates", "Instant paper creation", "Parent progress reports"],
   },
   {
     title: "Individual Educators",
     text: "Run fair, consistent exams effortlessly. Whether you teach 10 students or 100, AutoExam scales with your needs.",
-    points: ["One-click generation", "Personalized feedback", "No setup overhead"],
+    points: ["One click generation", "Personalized feedback", "No setup overhead"],
   },
 ]
 
@@ -199,13 +199,13 @@ function Hero() {
       <div className="relative mx-auto grid w-full max-w-[1220px] grid-cols-1 items-center gap-10 px-4 sm:px-6 lg:grid-cols-2 lg:gap-12 lg:px-10">
         <div>
           <div className="inline-flex rounded-full border border-[#7e89aa]/30 bg-[#1a264f]/70 px-4 py-2 text-xs text-[#c8d0e7] sm:text-sm">
-            Trusted by 50+ Pakistani institutions
+            Trusted by Pakistani institutions
           </div>
           <h1 className="mt-6 max-w-[620px] text-4xl leading-tight font-bold tracking-[-0.8px] text-white sm:text-5xl lg:text-6xl">
-            AI-Powered Exam Generation for Modern Educators
+            AI Powered Exam Generation for Modern Educators
           </h1>
           <p className="mt-5 max-w-[620px] text-base leading-7 text-[#b3bed8] sm:text-lg sm:leading-8">
-            Automate paper setting, semantic grading, detect AI-written answers, and deliver personalized feedback - all in one platform.
+            Automate paper setting, semantic grading, detect AI written answers, and deliver personalized feedback all in one platform.
           </p>
           <div className="mt-10 flex flex-wrap gap-4">
             <Link
@@ -287,7 +287,7 @@ function ProblemSection() {
     {
       icon: ClipboardCheck,
       title: "Manual Paper Creation Wastes Hours",
-      text: "Teachers spend 8 to 12 hours crafting each exam from scratch, typing questions, formatting, and proofreading - time that could go toward actual teaching.",
+      text: "Teachers spend 8 to 12 hours crafting each exam from scratch, typing questions, formatting, and proofreading time that could go toward actual teaching.",
     },
     {
       icon: BookOpenText,
@@ -297,7 +297,7 @@ function ProblemSection() {
     {
       icon: ShieldCheck,
       title: "AI Cheating Goes Undetected",
-      text: "With ChatGPT and other AI tools, students can generate perfect answers in seconds. Traditional plagiarism checkers cannot flag AI-written text.",
+      text: "With ChatGPT and other AI tools, students can generate perfect answers in seconds. Traditional plagiarism checkers cannot flag AI written text.",
     },
   ]
   return (
@@ -351,7 +351,7 @@ function WorkflowSection() {
 }
 
 function StackSection() {
-  const tags = ["React.js", "TailwindCSS", "FastAPI", "PostgreSQL", "Supabase", "OpenAI GPT", "Hugging Face", "GPTZero", "Vercel", "Render"]
+  const tags = ["React.js", "TailwindCSS", "PostgreSQL", "Supabase", "OpenAI GPT", "Hugging Face", "GPTZero", "Vercel"]
   return (
     <section id="demo" className="scroll-mt-24 bg-[#081334] px-4 py-14 sm:px-6 sm:py-20">
       <h2 className="text-center text-3xl font-bold tracking-[-0.6px] text-white sm:text-4xl lg:text-5xl">
@@ -373,20 +373,20 @@ function AudienceSection() {
     {
       icon: Building2,
       title: "Universities & Colleges",
-      text: "Handle large cohorts with automated assessment at scale. Reduce faculty workload while maintaining academic rigor across departments.",
-      points: ["Bulk exam generation", "Department-level analytics", "AI plagiarism monitoring"],
+      text: "Handle large cohorts with automated assessment at scale. Reduce faculty workload while maintaining academic across departments.",
+      points: ["Bulk exam generation", "Department level analytics", "AI plagiarism monitoring"],
     },
     {
       icon: School,
       title: "Schools",
       text: "Give teachers time back with instant paper generation. Create fair, consistent exams for every grade level and subject.",
-      points: ["Grade-specific templates", "Instant paper creation", "Parent progress reports"],
+      points: ["Grade specific templates", "Instant paper creation", "Parent progress reports"],
     },
     {
       icon: UsersRound,
       title: "Individual Educators",
       text: "Run fair, consistent exams effortlessly. Whether you teach 10 students or 100, AutoExam scales with your needs.",
-      points: ["One-click generation", "Personalized feedback", "No setup overhead"],
+      points: ["One click generation", "Personalized feedback", "No setup overhead"],
     },
   ]
 
@@ -425,9 +425,7 @@ function CTASection() {
         <h2 className="text-3xl leading-tight font-bold tracking-[-0.6px] text-white sm:text-4xl lg:text-5xl">
           Start Automating Your Exams Today
         </h2>
-        <p className="mt-3 text-base text-[#ebedff] sm:text-xl">
-          Free during beta - No credit card required
-        </p>
+        
         <div className="mx-auto mt-8 flex w-full max-w-[760px] flex-col gap-4 sm:flex-row">
           <input
             type="email"
@@ -481,7 +479,7 @@ function Footer() {
         </div>
         <div className="mt-10 border-t border-[#2b395c] pt-7 text-sm text-[#9ca9ca]">
           <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-            <p>© 2025 AutoExam.ai · COMSATS University Islamabad, Lahore Campus</p>
+            <p>© 2026 AutoExam.ai (COMSATS University Islamabad, Lahore), Lahore Campus</p>
             <div className="flex gap-8">
               <span>Privacy</span>
               <span>Terms</span>

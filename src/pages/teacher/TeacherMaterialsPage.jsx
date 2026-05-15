@@ -306,8 +306,8 @@ export default function TeacherMaterialsPage() {
             <h1 className="text-xl font-semibold text-[#151d3a] sm:text-2xl">Materials</h1>
             <p className="mt-1 text-sm text-[#7d86a5]">
               {workspaceTab === "files"
-                ? "Organize uploads by subject. Files live in Cloudinary; metadata in Supabase."
-                : "Paste course text manually — question generation uses your notes only (no PDF extraction)."}
+                ? "Organize uploads by subject."
+                : "Paste course text manually, Question generation uses your notes only."}
             </p>
             <div className="mt-3 inline-flex rounded-xl border border-[#e7eaf3] bg-white p-1 shadow-sm">
               <button

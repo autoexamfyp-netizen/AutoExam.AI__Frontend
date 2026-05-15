@@ -6,6 +6,7 @@
  */
 
 import { supabase } from "../lib/supabaseClient"
+import { requireTeacherId } from "../lib/teacherScope"
 
 const TABLE = "categories"
 
@@ -31,9 +32,11 @@ function friendlyError(error, fallback) {
  */
 export async function fetchCategories() {
   console.log("📂 Fetching categories...")
+  const teacherId = await requireTeacherId()
   const { data, error } = await supabase
     .from(TABLE)
     .select("id, title, description, created_at, updated_at, materials(count)")
+    .eq("created_by", teacherId)
     .order("title", { ascending: true })
 
   if (error) {
@@ -102,10 +105,12 @@ export async function updateCategory(id, patch) {
   if (typeof patch.title === "string") payload.title = patch.title.trim()
   if (typeof patch.description === "string") payload.description = patch.description.trim() || null
 
+  const teacherId = await requireTeacherId()
   const { data, error } = await supabase
     .from(TABLE)
     .update(payload)
     .eq("id", id)
+    .eq("created_by", teacherId)
     .select("*")
     .single()
 
@@ -126,7 +131,8 @@ export async function updateCategory(id, patch) {
  */
 export async function deleteCategory(id) {
   console.log("🗑️ Deleting category:", id)
-  const { error } = await supabase.from(TABLE).delete().eq("id", id)
+  const teacherId = await requireTeacherId()
+  const { error } = await supabase.from(TABLE).delete().eq("id", id).eq("created_by", teacherId)
   if (error) {
     console.error("❌ Category delete failed:", error.message)
     throw friendlyError(error, "Failed to delete category.")

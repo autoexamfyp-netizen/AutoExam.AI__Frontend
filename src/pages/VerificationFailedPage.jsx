@@ -24,7 +24,7 @@ export default function VerificationFailedPage() {
           <h1 className="max-w-[340px] text-4xl font-bold leading-tight tracking-[-1px]">Link issue</h1>
           <p className="mt-5 max-w-[420px] text-lg text-[#a9b4d4]">This confirmation or recovery link could not be used.</p>
         </div>
-        <p className="relative z-10 text-sm text-[#9ca8cc]">© 2025 AutoExam.ai · COMSATS University Islamabad</p>
+        <p className="relative z-10 text-sm text-[#9ca8cc]">© 2026 AutoExam.ai (COMSATS University Islamabad, Lahore)</p>
       </aside>
 
       <section className="flex min-h-screen w-full items-center justify-center px-4 py-8 sm:px-8 lg:w-[58%]">

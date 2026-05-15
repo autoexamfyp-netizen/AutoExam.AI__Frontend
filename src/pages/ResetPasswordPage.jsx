@@ -80,7 +80,7 @@ export default function ResetPasswordPage() {
             <h1 className="max-w-[340px] text-4xl font-bold leading-tight tracking-[-1px]">Invalid or expired link</h1>
             <p className="mt-5 max-w-[420px] text-lg text-[#a9b4d4]">Request a new reset email from the forgot password page.</p>
           </div>
-          <p className="relative z-10 text-sm text-[#9ca8cc]">© 2025 AutoExam.ai</p>
+          <p className="relative z-10 text-sm text-[#9ca8cc]">© 2026 AutoExam.ai</p>
         </aside>
         <section className="flex flex-1 items-center justify-center px-4 py-12">
           <div className="w-full max-w-[480px] rounded-2xl border border-[#e3e6ef] bg-white p-8 text-center shadow-sm">
@@ -116,7 +116,7 @@ export default function ResetPasswordPage() {
           <h1 className="max-w-[340px] text-5xl font-bold leading-[1.05] tracking-[-1px]">Choose a new password</h1>
           <p className="mt-5 max-w-[420px] text-lg text-[#a9b4d4]">Use at least 8 characters for a strong password.</p>
         </div>
-        <p className="relative z-10 text-sm text-[#9ca8cc]">© 2025 AutoExam.ai · COMSATS University Islamabad</p>
+        <p className="relative z-10 text-sm text-[#9ca8cc]">© 2026 AutoExam.ai (COMSATS University Islamabad, Lahore)</p>
       </aside>
 
       <section className="flex min-h-screen w-full items-center justify-center px-4 py-8 sm:px-8 lg:w-[58%]">

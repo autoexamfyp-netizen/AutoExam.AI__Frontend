@@ -208,7 +208,7 @@ export default function StudentFeedbackPage() {
       <section className="min-w-0 max-w-full rounded-2xl border border-[#e7eaf3] bg-white p-5 shadow-sm sm:p-6">
         <div className="flex items-center gap-2">
           <Target className="h-5 w-5 text-[#6562f1]" />
-          <h2 className="text-sm font-semibold text-[#151d3a]">Topic-wise performance</h2>
+          <h2 className="text-sm font-semibold text-[#151d3a]">Topic wise performance</h2>
         </div>
         <div className="mt-5 space-y-4">
           {data.topics.map((t) => (

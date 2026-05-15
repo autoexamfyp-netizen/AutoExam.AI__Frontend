@@ -37,6 +37,8 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut()
+    setSession(null)
+    setUser(null)
     return { error }
   }, [])
 
