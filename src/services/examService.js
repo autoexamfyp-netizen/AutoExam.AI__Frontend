@@ -9,6 +9,7 @@
  */
 
 import { apiDelete, apiGet, apiPatch, apiPost } from "./apiClient"
+import { supabase } from "../lib/supabaseClient"
 
 export async function fetchExams(opts = {}) {
   console.log("📂 Fetching exams...", opts)
@@ -107,4 +108,24 @@ export async function deleteExam(id) {
   await apiDelete(`/api/exams/${id}`)
   console.log("✅ Exam deleted")
   return true
+}
+
+/** Link an existing bank question to an exam paper (client-side; RLS on exam_questions). */
+export async function linkQuestionToExam(examId, questionId, position) {
+  const { error } = await supabase.from("exam_questions").insert({
+    exam_id: examId,
+    question_id: questionId,
+    position: position ?? 1,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/** Remove a question from a paper without deleting the bank row. */
+export async function unlinkQuestionFromExam(examId, questionId) {
+  const { error } = await supabase
+    .from("exam_questions")
+    .delete()
+    .eq("exam_id", examId)
+    .eq("question_id", questionId)
+  if (error) throw new Error(error.message)
 }

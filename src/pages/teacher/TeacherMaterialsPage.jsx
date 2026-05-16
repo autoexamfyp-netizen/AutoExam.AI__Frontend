@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertCircle, FileStack, FolderOpen, Menu, Search, UploadCloud, X } from "lucide-react"
+import { useSearchParams } from "react-router-dom"
+import { AlertCircle, FileStack, FolderOpen, Menu, Plus, Search, UploadCloud, X } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import ConfirmDialog from "../../components/student/ConfirmDialog"
 import RenameDialog from "../../components/ui/RenameDialog"
+import MoveMaterialDialog from "../../components/ui/MoveMaterialDialog"
 import FileUpload from "../../components/materials/FileUpload"
 import MaterialCard from "../../components/materials/MaterialCard"
 import MaterialPreviewModal from "../../components/materials/MaterialPreviewModal"
@@ -18,13 +20,17 @@ import {
 import {
   deleteMaterial,
   fetchMaterials,
+  moveMaterial,
   renameMaterial,
 } from "../../services/materialService"
+
+const LIBRARY_TYPES = new Set(["pdf", "ppt"])
 
 const ALL_ID = CategorySidebar.ALL_ID
 const UNCAT_ID = CategorySidebar.UNCAT_ID
 
 export default function TeacherMaterialsPage() {
+  const [searchParams] = useSearchParams()
   const [categoriesLoading, setCategoriesLoading] = useState(true)
   const [materialsLoading, setMaterialsLoading] = useState(true)
   const [categoryError, setCategoryError] = useState("")
@@ -42,15 +48,23 @@ export default function TeacherMaterialsPage() {
   const [pendingDeleteMaterial, setPendingDeleteMaterial] = useState(null)
   const [pendingDeleteCategory, setPendingDeleteCategory] = useState(null)
   const [pendingRenameMaterial, setPendingRenameMaterial] = useState(null)
+  const [pendingMoveMaterial, setPendingMoveMaterial] = useState(null)
   const [renameBusy, setRenameBusy] = useState(false)
+  const [moveBusy, setMoveBusy] = useState(false)
   const [deleteMaterialBusy, setDeleteMaterialBusy] = useState(false)
   const [deleteCategoryBusy, setDeleteCategoryBusy] = useState(false)
   const [showCategoryModal, setShowCategoryModal] = useState(false)
   const [editingCategory, setEditingCategory] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   const [toast, setToast] = useState(null)
   const [workspaceTab, setWorkspaceTab] = useState("files") // "files" | "text"
+
+  useEffect(() => {
+    const tab = searchParams.get("tab")
+    if (tab === "text" || tab === "notes") setWorkspaceTab("text")
+  }, [searchParams])
 
   const showToast = useCallback((tone, text) => {
     setToast({ tone, text, key: Date.now() })
@@ -113,15 +127,20 @@ export default function TeacherMaterialsPage() {
     }
   }, [])
 
-  const totalCount = materials.length
-  const uncategorizedCount = useMemo(
-    () => materials.filter((m) => !m.category_id).length,
+  const libraryMaterials = useMemo(
+    () => materials.filter((m) => LIBRARY_TYPES.has(m.material_type)),
     [materials],
+  )
+
+  const totalCount = libraryMaterials.length
+  const uncategorizedCount = useMemo(
+    () => libraryMaterials.filter((m) => !m.category_id).length,
+    [libraryMaterials],
   )
 
   const categoriesWithCounts = useMemo(() => {
     const counts = new Map()
-    for (const m of materials) {
+    for (const m of libraryMaterials) {
       if (!m.category_id) continue
       counts.set(m.category_id, (counts.get(m.category_id) ?? 0) + 1)
     }
@@ -129,11 +148,11 @@ export default function TeacherMaterialsPage() {
       ...c,
       material_count: counts.get(c.id) ?? c.material_count ?? 0,
     }))
-  }, [categories, materials])
+  }, [categories, libraryMaterials])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return materials.filter((m) => {
+    return libraryMaterials.filter((m) => {
       if (activeId === UNCAT_ID && m.category_id) return false
       if (activeId !== ALL_ID && activeId !== UNCAT_ID && m.category_id !== activeId) return false
       if (filter !== "all" && m.material_type !== filter) return false
@@ -145,7 +164,7 @@ export default function TeacherMaterialsPage() {
         m.category?.title?.toLowerCase().includes(q)
       )
     })
-  }, [materials, activeId, filter, query])
+  }, [libraryMaterials, activeId, filter, query])
 
   useEffect(() => {
     if (activeId === ALL_ID || activeId === UNCAT_ID) {
@@ -171,9 +190,40 @@ export default function TeacherMaterialsPage() {
     if (id !== ALL_ID && id !== UNCAT_ID) setUploadCategoryId(id)
   }
 
+  const openUploadModal = useCallback(() => {
+    if (activeId !== ALL_ID && activeId !== UNCAT_ID) {
+      setUploadCategoryId(activeId)
+    } else {
+      setUploadCategoryId(null)
+    }
+    setUploadOpen(true)
+  }, [activeId])
+
   const onRename = useCallback((material) => {
     setPendingRenameMaterial(material)
   }, [])
+
+  const onMove = useCallback((material) => {
+    setPendingMoveMaterial(material)
+  }, [])
+
+  const onConfirmMoveMaterial = useCallback(
+    async (categoryId) => {
+      if (!pendingMoveMaterial || moveBusy) return
+      setMoveBusy(true)
+      try {
+        const updated = await moveMaterial(pendingMoveMaterial.id, categoryId)
+        setMaterials((curr) => curr.map((m) => (m.id === updated.id ? updated : m)))
+        showToast("success", "Material moved")
+        setPendingMoveMaterial(null)
+      } catch (e) {
+        showToast("error", e?.message || "Move failed")
+      } finally {
+        setMoveBusy(false)
+      }
+    },
+    [pendingMoveMaterial, moveBusy, showToast],
+  )
 
   const onConfirmRenameMaterial = useCallback(
     async (nextTitle) => {
@@ -303,11 +353,8 @@ export default function TeacherMaterialsPage() {
           </button>
           ) : null}
           <div>
-            <h1 className="text-xl font-semibold text-[#151d3a] sm:text-2xl">Materials</h1>
-            <p className="mt-1 text-sm text-[#7d86a5]">
-              {workspaceTab === "files"
-                ? "Organize uploads by subject."
-                : "Paste course text manually, Question generation uses your notes only."}
+            <p className="text-sm text-[#5d6580] sm:text-[15px]">
+              Upload course content to power your AI exam generation.
             </p>
             <div className="mt-3 inline-flex rounded-xl border border-[#e7eaf3] bg-white p-1 shadow-sm">
               <button
@@ -317,7 +364,7 @@ export default function TeacherMaterialsPage() {
                   workspaceTab === "files" ? "bg-[#f1efff] text-[#5f4ce6]" : "text-[#596286] hover:bg-[#fafbff]"
                 }`}
               >
-                Files & uploads
+                Files & Uploads
               </button>
               <button
                 type="button"
@@ -327,7 +374,7 @@ export default function TeacherMaterialsPage() {
                 }`}
               >
                 <FileStack className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                Text studio
+                Course Notes
               </button>
             </div>
           </div>
@@ -366,18 +413,7 @@ export default function TeacherMaterialsPage() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
             <div className="hidden lg:block">{sidebar}</div>
 
-            <div className="min-w-0 space-y-6">
-          <FileUpload
-            onUploaded={onUploaded}
-            categories={categoriesWithCounts}
-            selectedCategoryId={uploadCategoryId}
-            onChangeCategory={setUploadCategoryId}
-            onCreateCategory={() => {
-              setEditingCategory(null)
-              setShowCategoryModal(true)
-            }}
-          />
-
+            <div className="min-w-0 space-y-4">
           <section className="min-w-0">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-2">
@@ -387,7 +423,15 @@ export default function TeacherMaterialsPage() {
                   {filtered.length}
                 </span>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                <button
+                  type="button"
+                  onClick={openUploadModal}
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5a56e2]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add materials
+                </button>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9aa3c2]" />
                   <input
@@ -402,8 +446,7 @@ export default function TeacherMaterialsPage() {
                   {[
                     { id: "all", label: "All" },
                     { id: "pdf", label: "PDFs" },
-                    { id: "image", label: "Images" },
-                    { id: "video", label: "Videos" },
+                    { id: "ppt", label: "Slides (PPT)" },
                   ].map((opt) => (
                     <button
                       key={opt.id}
@@ -445,8 +488,16 @@ export default function TeacherMaterialsPage() {
                     : `No materials in "${activeTitle}" yet`}
                 </p>
                 <p className="mt-1 text-xs text-[#7f88a6]">
-                  Pick a category and drop files above to fill this folder.
+                  Upload PDFs or PowerPoint slides for your subject folders.
                 </p>
+                <button
+                  type="button"
+                  onClick={openUploadModal}
+                  className="mt-4 inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#5a56e2]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add materials
+                </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -456,6 +507,7 @@ export default function TeacherMaterialsPage() {
                     material={m}
                     onPreview={setPreview}
                     onRename={onRename}
+                    onMove={onMove}
                     onDelete={setPendingDeleteMaterial}
                   />
                 ))}
@@ -511,6 +563,15 @@ export default function TeacherMaterialsPage() {
 
       <MaterialPreviewModal material={preview} onClose={() => setPreview(null)} />
 
+      <FileUpload
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onUploaded={onUploaded}
+        categories={categoriesWithCounts}
+        selectedCategoryId={uploadCategoryId}
+        onChangeCategory={setUploadCategoryId}
+      />
+
       <CreateCategoryModal
         open={showCategoryModal}
         initial={editingCategory}
@@ -519,6 +580,15 @@ export default function TeacherMaterialsPage() {
           setShowCategoryModal(false)
           setEditingCategory(null)
         }}
+      />
+
+      <MoveMaterialDialog
+        open={Boolean(pendingMoveMaterial)}
+        material={pendingMoveMaterial}
+        categories={categoriesWithCounts}
+        busy={moveBusy}
+        onConfirm={onConfirmMoveMaterial}
+        onCancel={() => !moveBusy && setPendingMoveMaterial(null)}
       />
 
       <RenameDialog

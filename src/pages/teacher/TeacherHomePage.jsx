@@ -28,12 +28,28 @@ import {
 import StatCard from "../../components/student/StatCard"
 import StableChartBox from "../../components/ui/StableChartBox"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
+import { useAuth } from "../../hooks/useAuth"
 import { fetchTeacherDashboard } from "../../services/dashboardService"
+
+function greetingForHour(hour) {
+  if (hour < 12) return "Good morning"
+  if (hour < 17) return "Good afternoon"
+  return "Good evening"
+}
+
+function firstNameFromUser(user) {
+  const full = user?.user_metadata?.full_name?.trim()
+  if (full) return full.split(/\s+/)[0]
+  const email = user?.email?.split("@")[0]
+  if (!email) return "there"
+  return email.charAt(0).toUpperCase() + email.slice(1)
+}
 
 const TYPE_COLORS = ["#6562f1", "#2ca36c", "#c89422"]
 const TOPIC_COLORS = ["#6562f1", "#3f67c8", "#2ca36c", "#c89422", "#c94a4a", "#7e57c2"]
 
 export default function TeacherHomePage() {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [data, setData] = useState(null)
@@ -104,26 +120,32 @@ export default function TeacherHomePage() {
   }
 
   const stats = data?.stats ?? {}
+  const greeting = greetingForHour(new Date().getHours())
+  const firstName = firstNameFromUser(user)
 
   return (
     <div className="min-w-0 max-w-full space-y-8">
-      <div className="flex items-end justify-between gap-3">
-        <div className="min-w-0 max-w-full">
-          <h1 className="text-xl font-semibold tracking-[-0.3px] text-[#151d3a] sm:text-2xl">Dashboard</h1>
-          <p className="mt-1 break-words text-sm text-[#7d86a5]">Overview of your question bank, exams, and content</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-base font-medium text-[#313a58] sm:text-lg">
+          {greeting}, {firstName}. Here&apos;s what&apos;s happening today.
+        </p>
         <button
           type="button"
           onClick={() => setRefreshKey((k) => k + 1)}
           className="inline-flex h-9 items-center gap-2 rounded-xl border border-[#e3e6ef] bg-white px-3 text-xs font-semibold text-[#313a58] transition hover:bg-[#fafbff]"
-          title="Refresh"
+          title="Refresh dashboard"
         >
           <RefreshCw className="h-3.5 w-3.5" /> Refresh
         </button>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-3 lg:gap-3">
-        <StatCard compact label="Total materials" value={stats.totalMaterials ?? 0} icon={<Layers className="h-4 w-4" />} />
+        <StatCard
+          compact
+          label="Course materials uploaded"
+          value={stats.totalMaterials ?? 0}
+          icon={<Layers className="h-4 w-4" />}
+        />
         <StatCard
           compact
           label="Total questions"
@@ -133,14 +155,14 @@ export default function TeacherHomePage() {
         />
         <StatCard
           compact
-          label="AI generated"
+          label="Questions from AI"
           value={stats.totalAiQuestions ?? 0}
           icon={<Sparkles className="h-4 w-4" />}
           iconClassName="bg-[#f1efff] text-[#5f4ce6]"
         />
         <StatCard
           compact
-          label="Exam templates"
+          label="Saved exam templates"
           value={stats.totalExams ?? 0}
           icon={<ClipboardCheck className="h-4 w-4" />}
           iconClassName="bg-[#e9f8f0] text-[#2ca36c]"
@@ -161,28 +183,28 @@ export default function TeacherHomePage() {
         />
         <StatCard
           compact
-          label="Total submissions"
+          label="Submissions"
           value={stats.totalExamSubmissions ?? 0}
           icon={<FileText className="h-4 w-4" />}
           iconClassName="bg-[#edf3ff] text-[#3f67c8]"
         />
         <StatCard
           compact
-          label="Pending evaluations"
+          label="Awaiting your review"
           value={stats.pendingEvaluations ?? 0}
           icon={<Activity className="h-4 w-4" />}
           iconClassName="bg-[#fff6e1] text-[#c89422]"
         />
         <StatCard
           compact
-          label="Students attempted"
+          label="Students who attempted"
           value={stats.studentsAttempted ?? 0}
           icon={<Users className="h-4 w-4" />}
           iconClassName="bg-[#fdecec] text-[#c94a4a]"
         />
         <StatCard
           compact
-          label="Roster (students)"
+          label="Enrolled students"
           value={stats.totalStudents ?? 0}
           icon={<Users className="h-4 w-4" />}
           iconClassName="bg-[#f1f3f8] text-[#5a6178]"
@@ -235,7 +257,7 @@ export default function TeacherHomePage() {
           <p className="text-xs text-[#7f88a6]">Top topics across your bank</p>
           <div className="mt-4 w-full min-w-0 max-w-full">
             {byTopic.length === 0 ? (
-              <p className="py-8 text-center text-xs text-[#8a93ad]">No topics yet â€” generate some questions.</p>
+              <p className="py-8 text-center text-xs text-[#8a93ad]">No topics yet — generate some questions.</p>
             ) : (
               <StableChartBox heightPx={220}>
                 {(w, h) => (

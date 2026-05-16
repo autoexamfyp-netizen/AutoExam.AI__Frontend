@@ -27,6 +27,7 @@ function relative(when) {
  * @param {string|null} props.activeMaterialId
  * @param {(material: object) => void} props.onSelectMaterial
  * @param {Map<string, number>} [props.questionCounts]   text_material_id → question count
+ * @param {string} [props.prefillFromTitle]  Banner when opened via ?noteId=
  */
 export default function ContentPicker({
   categories,
@@ -37,6 +38,7 @@ export default function ContentPicker({
   onSelectMaterial,
   questionCounts,
   loading,
+  prefillFromTitle,
 }) {
   const [query, setQuery] = useState("")
 
@@ -79,6 +81,12 @@ export default function ContentPicker({
           />
         </div>
       </header>
+
+      {prefillFromTitle ? (
+        <div className="mx-3 mt-2 rounded-lg border border-[#e3deff] bg-[#f4f3ff] px-3 py-2 text-xs font-medium text-[#5f4ce6]">
+          📄 Pre-filled from: {prefillFromTitle}
+        </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {loading ? (

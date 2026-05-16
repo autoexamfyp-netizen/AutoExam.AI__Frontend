@@ -11,23 +11,25 @@ const MAX_MB = Number(import.meta.env.VITE_CLOUDINARY_MAX_MB ?? 50)
 
 export const ALLOWED_MIME = {
   pdf: ["application/pdf"],
-  image: ["image/jpeg", "image/jpg", "image/png"],
-  video: ["video/mp4"],
+  ppt: [
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ],
 }
 
-const FLAT_ALLOWED = [...ALLOWED_MIME.pdf, ...ALLOWED_MIME.image, ...ALLOWED_MIME.video]
+const FLAT_ALLOWED = [...ALLOWED_MIME.pdf, ...ALLOWED_MIME.ppt]
 
-export const ACCEPT_ATTR = ".pdf,.jpg,.jpeg,.png,.mp4,application/pdf,image/jpeg,image/png,video/mp4"
+export const ACCEPT_ATTR =
+  ".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
 /**
  * Returns a normalized "material_type" for a given file mime type.
  * @param {string} mime
- * @returns {"pdf"|"image"|"video"|"other"}
+ * @returns {"pdf"|"ppt"|"other"}
  */
 export function getMaterialType(mime) {
   if (ALLOWED_MIME.pdf.includes(mime)) return "pdf"
-  if (ALLOWED_MIME.image.includes(mime)) return "image"
-  if (ALLOWED_MIME.video.includes(mime)) return "video"
+  if (ALLOWED_MIME.ppt.includes(mime)) return "ppt"
   return "other"
 }
 
@@ -41,7 +43,7 @@ export function validateFile(file) {
 
   if (!FLAT_ALLOWED.includes(file.type)) {
     console.error("❌ Invalid File Type:", file.type, file.name)
-    return { ok: false, error: `Unsupported file type. Allowed: PDF, JPG, PNG, MP4.` }
+    return { ok: false, error: "Unsupported file type. Allowed: PDF and PowerPoint (PPT/PPTX)." }
   }
 
   const maxBytes = MAX_MB * 1024 * 1024
@@ -98,13 +100,15 @@ export function uploadToCloudinary(file, opts = {}) {
     )
   }
 
-  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`
+  // PDF/PPT must use raw delivery — auto/upload stores PDFs as "image" and breaks preview.
+  const resourceType = "raw"
+  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`
   const form = new FormData()
   form.append("file", file)
   form.append("upload_preset", UPLOAD_PRESET)
   if (folder) form.append("folder", folder)
 
-  console.log("☁️ Uploading to Cloudinary...", { name: file.name, type: file.type, bytes: file.size })
+  console.log("☁️ Uploading to Cloudinary (raw)...", { name: file.name, type: file.type, bytes: file.size })
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
@@ -174,15 +178,57 @@ export function uploadToCloudinary(file, opts = {}) {
 }
 
 /**
- * Build an inline-display URL for a Cloudinary asset (PDF/image).
- * Useful for previewing PDFs in a new tab when the upload preset returns
- * an attachment URL by default.
+ * Direct delivery URL for a stored material (no fl_inline — that causes HTTP 400 on PDFs).
  *
  * @param {string} secureUrl
+ * @param {{ resourceType?: string, materialType?: string }} [opts]
  */
-export function inlineUrl(secureUrl) {
+export function deliveryUrl(secureUrl, opts = {}) {
   if (!secureUrl) return secureUrl
-  return secureUrl.replace("/upload/", "/upload/fl_inline/")
+
+  const { resourceType, materialType } = opts
+  let url = secureUrl.replace("/upload/fl_inline/", "/upload/")
+
+  if (resourceType === "raw" || url.includes("/raw/upload/")) {
+    return url
+  }
+
+  const isDocument =
+    materialType === "pdf" ||
+    materialType === "ppt" ||
+    /\.(pdf|pptx?)(\?|#|$)/i.test(url)
+
+  if (isDocument) {
+    if (url.includes("/image/upload/")) url = url.replace("/image/upload/", "/raw/upload/")
+    if (url.includes("/video/upload/")) url = url.replace("/video/upload/", "/raw/upload/")
+  }
+
+  return url
+}
+
+/**
+ * View/open URL for a material row from Supabase.
+ * @param {{ file_url: string, resource_type?: string, material_type?: string }} material
+ */
+export function materialViewUrl(material) {
+  if (!material?.file_url) return material?.file_url ?? ""
+  return deliveryUrl(material.file_url, {
+    resourceType: material.resource_type,
+    materialType: material.material_type,
+  })
+}
+
+/** Office Online embed for PowerPoint files (public Cloudinary URL required). */
+export function pptEmbedUrl(viewUrl) {
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(viewUrl)}`
+}
+
+/** @deprecated Use materialViewUrl — fl_inline breaks PDF preview on Cloudinary. */
+export function inlineUrl(secureUrl, opts) {
+  if (secureUrl && typeof secureUrl === "object" && secureUrl.file_url) {
+    return materialViewUrl(secureUrl)
+  }
+  return deliveryUrl(secureUrl, opts)
 }
 
 /**

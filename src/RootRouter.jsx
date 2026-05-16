@@ -8,7 +8,7 @@ import TeacherMaterialsPage from "./pages/teacher/TeacherMaterialsPage"
 import TeacherGenerateExamPage from "./pages/teacher/TeacherGenerateExamPage"
 import TeacherExamReviewPage from "./pages/teacher/TeacherExamReviewPage"
 import TeacherPublishedExamsPage from "./pages/teacher/TeacherPublishedExamsPage"
-import TeacherQuestionBankPage from "./pages/teacher/TeacherQuestionBankPage"
+import TeacherMyExamsPage from "./pages/teacher/TeacherMyExamsPage"
 import TeacherSubmissionsPage from "./pages/teacher/TeacherSubmissionsPage"
 import TeacherEvaluationPage from "./pages/teacher/TeacherEvaluationPage"
 import TeacherAiDetectionPage from "./pages/teacher/TeacherAiDetectionPage"
@@ -81,10 +81,9 @@ export default function RootRouter() {
         <Route index element={<TeacherHomePage />} />
         <Route path="materials" element={<TeacherMaterialsPage />} />
         <Route path="generate-exam" element={<TeacherGenerateExamPage />} />
-        <Route path="exams" element={<TeacherQuestionBankPage />} />
+        <Route path="exams" element={<TeacherMyExamsPage />} />
         <Route path="exams/:examId/review" element={<TeacherExamReviewPage />} />
         <Route path="published-exams" element={<TeacherPublishedExamsPage />} />
-        <Route path="question-bank" element={<TeacherQuestionBankPage />} />
         <Route path="submissions" element={<TeacherSubmissionsPage />} />
         <Route path="evaluation" element={<TeacherEvaluationPage />} />
         <Route path="ai-detection" element={<TeacherAiDetectionPage />} />

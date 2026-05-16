@@ -7,8 +7,15 @@ import {
   FileText,
   MoreVertical,
   Pencil,
+  Send,
   Trash2,
 } from "lucide-react"
+import {
+  displayExamTitle,
+  examStatusBadgeClass,
+  formatExamSourceLabel,
+  resolveExamStatusLabel,
+} from "../../utils/examTitle"
 
 function relative(when) {
   if (!when) return ""
@@ -28,31 +35,26 @@ const DIFFICULTY_BADGE = {
   mixed: "bg-[#eef1f7] text-[#5d6580]",
 }
 
-/**
- * Card for a single generated paper (`exam`).
- *
- * @param {object} props
- * @param {object} props.exam   { id, title, total_marks, total_questions, difficulty, source }
- * @param {() => void} props.onView
- * @param {string} [props.viewLabel]
- * @param {() => void} [props.onRename]
- * @param {() => void} [props.onDuplicate]
- * @param {() => void} [props.onDelete]
- */
 export default function GeneratedPaperCard({
   exam,
-  onView,
-  viewLabel = "View questions",
+  categoryTitle,
+  onReview,
   onRename,
   onDuplicate,
+  onPublish,
   onDelete,
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const closeMenu = () => setMenuOpen(false)
-  if (!exam || !exam.id) return null
+
+  if (!exam?.id) return null
+
+  const displayTitle = displayExamTitle(exam.title)
+  const statusLabel = resolveExamStatusLabel(exam)
+  const statusClass = examStatusBadgeClass(exam)
   const diffClass = DIFFICULTY_BADGE[exam.difficulty] || DIFFICULTY_BADGE.medium
-  const displayTitle = exam.title?.trim() ? exam.title : "Untitled exam"
-  const categoryTitle = exam.category?.title || "Uncategorized"
+  const sourceLabel = formatExamSourceLabel(exam.source)
+  const subjectLabel = categoryTitle || exam.category?.title || "Uncategorized"
 
   return (
     <article className="group relative flex h-full flex-col rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm transition hover:border-[#6562f1]/30 hover:shadow-md">
@@ -61,27 +63,61 @@ export default function GeneratedPaperCard({
           <ClipboardCheck className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h3
-            className={`truncate text-sm font-semibold ${
-              exam.title?.trim() ? "text-[#151d3a]" : "italic text-[#7f88a6]"
-            }`}
-            title={displayTitle}
-          >
+          <h3 className="truncate text-sm font-semibold text-[#151d3a]" title={displayTitle}>
             {displayTitle}
           </h3>
-          <p className="mt-0.5 truncate text-xs text-[#7f88a6]" title={categoryTitle}>
-            {categoryTitle}
+          <span
+            className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusClass}`}
+          >
+            {statusLabel}
+          </span>
+          <p className="mt-1 truncate text-xs text-[#7f88a6]" title={subjectLabel}>
+            {subjectLabel}
           </p>
         </div>
+      </header>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="rounded-full bg-[#eef1f7] px-2 py-0.5 font-medium text-[#5d6580]">
+          {exam.total_questions || 0} questions
+        </span>
+        <span className="rounded-full bg-[#eef1f7] px-2 py-0.5 font-medium text-[#5d6580]">
+          {exam.total_marks || 0} marks
+        </span>
+        <span className={`rounded-full px-2 py-0.5 font-semibold capitalize ${diffClass}`}>
+          {exam.difficulty || "medium"}
+        </span>
+      </div>
+
+      {sourceLabel ? (
+        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-[#8a93ad]">
+          <FileText className="h-3 w-3 shrink-0" />
+          <span className="truncate">{sourceLabel}</span>
+        </p>
+      ) : null}
+
+      <p className="mt-3 flex items-center gap-1 text-[11px] text-[#99a0b7]">
+        <Clock className="h-3 w-3" /> {relative(exam.created_at)}
+      </p>
+
+      <div className="relative mt-4 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onReview}
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#6562f1] bg-white text-xs font-semibold text-[#5f4ce6] transition hover:bg-[#f1efff]"
+        >
+          <Eye className="h-3.5 w-3.5" />
+          Review
+        </button>
         <div className="relative">
           <button
             type="button"
-            aria-label="More"
+            aria-label="More actions"
             onClick={(e) => {
               e.stopPropagation()
               setMenuOpen((v) => !v)
             }}
-            className="rounded-lg p-1.5 text-[#9aa3c2] opacity-0 transition group-hover:opacity-100 hover:bg-[#f6f7fc] aria-expanded:opacity-100"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e3e6ef] bg-white text-[#5d6580] transition hover:bg-[#fafbff]"
             aria-expanded={menuOpen}
           >
             <MoreVertical className="h-4 w-4" />
@@ -96,84 +132,67 @@ export default function GeneratedPaperCard({
               />
               <div
                 role="menu"
-                className="absolute right-0 top-9 z-20 w-44 overflow-hidden rounded-xl border border-[#e7eaf3] bg-white py-1 text-sm shadow-[0_8px_30px_rgba(15,23,48,0.12)]"
+                className="absolute bottom-full right-0 z-20 mb-1 w-44 overflow-hidden rounded-xl border border-[#e7eaf3] bg-white py-1 text-sm shadow-[0_8px_30px_rgba(15,23,48,0.12)]"
               >
-                {onRename ? (
-                  <button
-                    type="button"
+                <MenuItem
+                  label="Rename"
+                  icon={Pencil}
+                  onClick={() => {
+                    closeMenu()
+                    onRename?.()
+                  }}
+                />
+                <MenuItem
+                  label="Duplicate"
+                  icon={Copy}
+                  onClick={() => {
+                    closeMenu()
+                    onDuplicate?.()
+                  }}
+                />
+                {onPublish ? (
+                  <MenuItem
+                    label="Publish"
+                    icon={Send}
                     onClick={() => {
                       closeMenu()
-                      onRename()
+                      onPublish()
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[#313a58] hover:bg-[#fafbff]"
-                  >
-                    <Pencil className="h-3.5 w-3.5" /> Rename
-                  </button>
+                  />
                 ) : null}
-                {onDuplicate ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      closeMenu()
-                      onDuplicate()
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[#313a58] hover:bg-[#fafbff]"
-                  >
-                    <Copy className="h-3.5 w-3.5" /> Duplicate
-                  </button>
-                ) : null}
-                {onDelete ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      closeMenu()
-                      onDelete()
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[#c94a4a] hover:bg-red-50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" /> Delete
-                  </button>
-                ) : null}
+                <div className="my-1 border-t border-[#eef1f7]" />
+                <MenuItem
+                  label="Delete"
+                  icon={Trash2}
+                  danger
+                  onClick={() => {
+                    closeMenu()
+                    onDelete?.()
+                  }}
+                />
               </div>
             </>
           ) : null}
         </div>
-      </header>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-        <span className="rounded-full bg-[#eef1f7] px-2 py-0.5 font-medium text-[#5d6580]">
-          {exam.total_questions || 0} questions
-        </span>
-        <span className="rounded-full bg-[#eef1f7] px-2 py-0.5 font-medium text-[#5d6580]">
-          {exam.total_marks || 0} marks
-        </span>
-        <span className={`rounded-full px-2 py-0.5 font-semibold capitalize ${diffClass}`}>
-          {exam.difficulty || "medium"}
-        </span>
-        {exam.status && exam.status !== "draft" ? (
-          <span className="rounded-full bg-[#e8fbf3] px-2 py-0.5 font-semibold text-[#1f9d67]">
-            {exam.status}
-          </span>
-        ) : null}
       </div>
-
-      {exam.source?.title ? (
-        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-[#8a93ad]">
-          <FileText className="h-3 w-3" /> from “{exam.source.title}”
-        </p>
-      ) : null}
-
-      <p className="mt-3 flex items-center gap-1 text-[11px] text-[#99a0b7]">
-        <Clock className="h-3 w-3" /> {relative(exam.created_at)}
-      </p>
-
-      <button
-        type="button"
-        onClick={onView}
-        className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#151d3a] text-xs font-semibold text-white transition hover:bg-[#252f55]"
-      >
-        <Eye className="h-3.5 w-3.5" /> {viewLabel}
-      </button>
     </article>
+  )
+}
+
+function MenuItem({ label, icon: Icon, onClick, danger }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[#fafbff] ${
+        danger ? "text-[#c94a4a] hover:bg-red-50" : "text-[#313a58]"
+      }`}
+    >
+      {Icon ? (
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${danger ? "" : "text-[#7d86a5]"}`} />
+      ) : null}
+      {label}
+    </button>
   )
 }

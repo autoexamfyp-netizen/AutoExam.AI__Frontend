@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Plus, Sparkles, StickyNote } from "lucide-react"
-import ContentList from "./ContentList"
+import { Link } from "react-router-dom"
+import { ArrowLeft, FolderOpen, Plus, Search, Sparkles } from "lucide-react"
+import ContentList, { displayNoteTitle } from "./ContentList"
+import { sanitizeNoteContent, sanitizeNoteTitle } from "./noteUtils"
+import MoveMaterialDialog from "../ui/MoveMaterialDialog"
 import TextEditor from "./TextEditor"
-import GeneratePanel from "./GeneratePanel"
-import QuestionList from "../questions/QuestionList"
 import CategorySidebar from "./CategorySidebar"
 import ConfirmDialog from "../student/ConfirmDialog"
-import RenameDialog from "../ui/RenameDialog"
 import {
   createTextMaterial,
   deleteTextMaterial,
@@ -15,20 +15,9 @@ import {
   fetchTextMaterials,
   updateTextMaterial,
 } from "../../services/contentService"
-import { generateQuestionsFromText } from "../../services/questionService"
 
 const ALL_ID = CategorySidebar.ALL_ID
 const UNCAT_ID = CategorySidebar.UNCAT_ID
-
-const DEFAULT_GEN = {
-  mcq: 3,
-  short: 2,
-  essay: 1,
-  difficulty: "medium",
-  marksMcq: 2,
-  marksShort: 4,
-  marksEssay: 10,
-}
 
 const AUTOSAVE_DELAY_MS = 4000
 
@@ -79,14 +68,12 @@ export default function TextStudio({
 
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState("idle") // idle | dirty | saving | saved | error
-  const [generating, setGenerating] = useState(false)
-  const [genConfig, setGenConfig] = useState(() => ({ ...DEFAULT_GEN }))
-  const [generatedPreview, setGeneratedPreview] = useState([])
-
   const [pendingDelete, setPendingDelete] = useState(null)
-  const [pendingRename, setPendingRename] = useState(null)
-  const [renameBusy, setRenameBusy] = useState(false)
+  const [pendingMoveNote, setPendingMoveNote] = useState(null)
+  const [moveNoteBusy, setMoveNoteBusy] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
+
+  const [query, setQuery] = useState("")
 
   const autosaveTimerRef = useRef(null)
   const savedFlashTimerRef = useRef(null)
@@ -117,6 +104,10 @@ export default function TextStudio({
       cancelled = true
     }
   }, [activeNavId, showToast])
+
+  useEffect(() => {
+    setQuery("")
+  }, [activeNavId])
 
   /* ----------------------- Dirty / autosave wiring -------------------------- */
   const isDirty = useMemo(() => {
@@ -159,28 +150,38 @@ export default function TextStudio({
   }, [])
 
   /* ----------------------- Selection & creation ---------------------------- */
-  const loadIntoEditor = useCallback((row) => {
+  const loadIntoEditor = useCallback((row, { initialMode = "preview" } = {}) => {
+    const cleanTitle = sanitizeNoteTitle(row.title)
+    const cleanContent = sanitizeNoteContent(row.content)
     setDraftId(row.id)
     setIsNewDraft(false)
-    setTitle(row.title ?? "")
-    setContent(row.content ?? "")
+    setTitle(cleanTitle)
+    setContent(cleanContent)
     setCategoryId(row.category_id ?? null)
     setOriginalSnapshot({
       id: row.id,
-      title: row.title ?? "",
-      content: row.content ?? "",
+      title: cleanTitle,
+      content: cleanContent,
       categoryId: row.category_id ?? null,
     })
     setSaveStatus("idle")
-    setMode("edit")
-    console.log("📄 Loading content preview...")
-    console.log("✏️ Editing content:", row.id)
+    setMode(initialMode)
   }, [])
 
   const handleSelectRow = (row) => {
-    if (row.id === draftId) return
+    if (row.id === draftId) {
+      if (mode === "preview") return
+      setMode("preview")
+      return
+    }
     if (isDirty && !window.confirm("You have unsaved changes. Discard them?")) return
-    loadIntoEditor(row)
+    loadIntoEditor(row, { initialMode: "preview" })
+  }
+
+  const handleEditRow = (row) => {
+    if (row.id === draftId && mode === "edit") return
+    if (isDirty && !window.confirm("You have unsaved changes. Discard them?")) return
+    loadIntoEditor(row, { initialMode: "edit" })
   }
 
   const handleNew = useCallback(() => {
@@ -197,20 +198,42 @@ export default function TextStudio({
     setOriginalSnapshot({ id: null, title: "", content: "", categoryId: null })
     setSaveStatus("idle")
     setMode("edit")
-    setGeneratedPreview([])
-    console.log("📝 Creating new text content...")
   }, [activeNavId, categoriesWithCounts, isDirty])
+
+  const closeEditor = useCallback(() => {
+    if (isDirty && !window.confirm("You have unsaved changes. Discard them?")) return
+    setDraftId(null)
+    setIsNewDraft(false)
+    setTitle("")
+    setContent("")
+    setCategoryId(null)
+    setOriginalSnapshot(DRAFT_DEFAULT)
+    setSaveStatus("idle")
+  }, [isDirty])
+
+  const handleCancelEdit = useCallback(() => {
+    if (isNewDraft && !draftId) {
+      closeEditor()
+      return
+    }
+    setTitle(originalSnapshot.title)
+    setContent(originalSnapshot.content)
+    setCategoryId(originalSnapshot.categoryId)
+    setSaveStatus("idle")
+    setMode("preview")
+  }, [isNewDraft, draftId, originalSnapshot, closeEditor])
 
   /* ----------------------- Save (manual + autosave) ------------------------ */
   const performSave = useCallback(
-    async ({ silent = false } = {}) => {
+    async ({ silent = false, openPreviewAfter = false } = {}) => {
+      const saveTitle = title.trim()
+      const saveContent = sanitizeNoteContent(content)
       const missing = []
-      if (!title.trim()) missing.push("title")
-      if (!categoryId) missing.push("category")
-      if (!content.trim()) missing.push("content")
+      if (!saveTitle) missing.push("title")
+      if (!categoryId) missing.push("subject")
+      if (!saveContent.trim()) missing.push("course notes")
       if (missing.length) {
-        const msg = `Add a ${missing.join(", ")} before saving.`
-        console.warn("⚠️ Save blocked — missing:", missing)
+        const msg = `Add a ${missing.join(" and ")} before saving.`
         if (!silent) showToast("error", msg)
         return null
       }
@@ -219,29 +242,28 @@ export default function TextStudio({
       try {
         let row
         if (draftId) {
-          console.log("💾 Saving text content...", { draftId })
-          row = await updateTextMaterial(draftId, { title, content, categoryId })
+          row = await updateTextMaterial(draftId, { title: saveTitle, content: saveContent, categoryId })
         } else {
-          console.log("📝 Creating new text content...")
-          console.log("💾 Saving text content...")
-          row = await createTextMaterial({ title, content, categoryId })
+          row = await createTextMaterial({ title: saveTitle, content: saveContent, categoryId })
           setDraftId(row.id)
           setIsNewDraft(false)
-          if (!silent) console.log("✅ New content created", row.id)
         }
-        console.log("✅ Content saved successfully", row.id)
+        const cleanTitle = sanitizeNoteTitle(row.title)
+        const cleanBody = sanitizeNoteContent(row.content)
+        setTitle(cleanTitle)
+        setContent(cleanBody)
         updateLocalRow(row)
         setOriginalSnapshot({
           id: row.id,
-          title: row.title ?? "",
-          content: row.content ?? "",
+          title: cleanTitle,
+          content: cleanBody,
           categoryId: row.category_id ?? null,
         })
         flashSaved()
-        if (!silent) showToast("success", "Content saved")
+        if (!silent) showToast("success", "Note saved")
+        if (openPreviewAfter) setMode("preview")
         return row
       } catch (e) {
-        console.error("❌ Failed to save content:", e)
         setSaveStatus("error")
         if (!silent) showToast("error", e?.message || "Save failed")
         return null
@@ -258,9 +280,9 @@ export default function TextStudio({
       window.clearTimeout(autosaveTimerRef.current)
       autosaveTimerRef.current = null
     }
-    if (!draftId) return
+    if (!draftId || mode !== "edit") return
     if (!isDirty) return
-    if (!title.trim() || !content.trim() || !categoryId) return
+    if (!title.trim() || !sanitizeNoteContent(content).trim() || !categoryId) return
     autosaveTimerRef.current = window.setTimeout(() => {
       performSave({ silent: true })
     }, AUTOSAVE_DELAY_MS)
@@ -270,7 +292,7 @@ export default function TextStudio({
         autosaveTimerRef.current = null
       }
     }
-  }, [draftId, isDirty, title, content, categoryId, performSave])
+  }, [draftId, mode, isDirty, title, content, categoryId, performSave])
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -281,31 +303,62 @@ export default function TextStudio({
   }, [])
 
   /* ----------------------- Per-row actions --------------------------------- */
-  const handleRename = useCallback((row) => {
-    setPendingRename(row)
+  const noteLeavesFolder = useCallback((navId, row) => {
+    if (navId === ALL_ID) return false
+    if (navId === UNCAT_ID) return row.category_id != null
+    return row.category_id !== navId
   }, [])
 
-  const handleConfirmRename = useCallback(
-    async (nextTitle) => {
-      if (!pendingRename) return
-      setRenameBusy(true)
+  const handleMoveNote = useCallback((row) => {
+    setPendingMoveNote(row)
+  }, [])
+
+  const handleConfirmMoveNote = useCallback(
+    async (nextCategoryId) => {
+      if (!pendingMoveNote || moveNoteBusy) return
+      setMoveNoteBusy(true)
       try {
-        const updated = await updateTextMaterial(pendingRename.id, { title: nextTitle })
-        updateLocalRow(updated)
-        if (updated.id === draftId) {
-          setTitle(updated.title)
-          setOriginalSnapshot((s) => ({ ...s, title: updated.title }))
+        const updated = await updateTextMaterial(pendingMoveNote.id, { categoryId: nextCategoryId })
+        if (noteLeavesFolder(activeNavId, updated)) {
+          setItems((curr) => curr.filter((r) => r.id !== updated.id))
+        } else {
+          updateLocalRow(updated)
         }
-        showToast("success", "Note renamed")
-        setPendingRename(null)
+        if (updated.id === draftId) {
+          setCategoryId(nextCategoryId)
+          setOriginalSnapshot((s) => ({ ...s, categoryId: nextCategoryId }))
+        }
+        showToast("success", "Note moved")
+        setPendingMoveNote(null)
       } catch (e) {
-        showToast("error", e?.message || "Rename failed")
-        throw e
+        showToast("error", e?.message || "Move failed")
       } finally {
-        setRenameBusy(false)
+        setMoveNoteBusy(false)
       }
     },
-    [pendingRename, draftId, updateLocalRow, showToast],
+    [pendingMoveNote, moveNoteBusy, activeNavId, noteLeavesFolder, updateLocalRow, draftId, showToast],
+  )
+
+  const handleExportNote = useCallback(
+    (row) => {
+      const base =
+        (displayNoteTitle(row) || "note")
+          .replace(/[^\w\s.-]+/g, "")
+          .trim()
+          .replace(/\s+/g, "_")
+          .slice(0, 80) || "note"
+      const blob = new Blob([row.content || ""], { type: "text/plain;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${base}.txt`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      showToast("success", "Exported as text file")
+    },
+    [showToast],
   )
 
   const handleDuplicate = useCallback(
@@ -313,8 +366,8 @@ export default function TextStudio({
       try {
         const copy = await duplicateTextMaterial(row)
         setItems((curr) => [copy, ...curr])
-        loadIntoEditor(copy)
-        showToast("success", "Duplicated")
+        loadIntoEditor(copy, { initialMode: "edit" })
+        showToast("success", "Note duplicated")
       } catch (e) {
         showToast("error", e?.message || "Duplicate failed")
       }
@@ -336,17 +389,13 @@ export default function TextStudio({
         return next
       })
       if (target.id === draftId) {
-        const rest = items.filter((r) => r.id !== target.id)
-        if (rest.length) loadIntoEditor(rest[0])
-        else {
-          setDraftId(null)
-          setIsNewDraft(false)
-          setTitle("")
-          setContent("")
-          setCategoryId(null)
-          setOriginalSnapshot(DRAFT_DEFAULT)
-          setSaveStatus("idle")
-        }
+        setDraftId(null)
+        setIsNewDraft(false)
+        setTitle("")
+        setContent("")
+        setCategoryId(null)
+        setOriginalSnapshot(DRAFT_DEFAULT)
+        setSaveStatus("idle")
       }
       setPendingDelete(null)
       showToast("success", "Note deleted")
@@ -355,60 +404,7 @@ export default function TextStudio({
     } finally {
       setDeleteBusy(false)
     }
-  }, [pendingDelete, deleteBusy, draftId, items, loadIntoEditor, showToast])
-
-  /* ----------------------- Generation -------------------------------------- */
-  const handleGenerate = async () => {
-    const total = genConfig.mcq + genConfig.short + genConfig.essay
-    if (total <= 0) {
-      showToast("error", "Choose at least one question to generate.")
-      return
-    }
-    if (!content.trim()) {
-      showToast("error", "Paste study content before generating.")
-      return
-    }
-    if (!categoryId) {
-      showToast("error", "Pick a category before generating.")
-      return
-    }
-
-    // Make sure latest text is persisted so question_bank.text_material_id is correct.
-    let materialId = draftId
-    if (!materialId || isDirty) {
-      const saved = await performSave({ silent: true })
-      if (!saved) {
-        showToast("error", "Save your content first, then generate.")
-        return
-      }
-      materialId = saved.id
-    }
-
-    setGenerating(true)
-    setGeneratedPreview([])
-    try {
-      const saved = await generateQuestionsFromText({
-        content,
-        title: title.trim() || "Study notes",
-        categoryTitle: categoryTitle || "General",
-        categoryId,
-        textMaterialId: materialId,
-        config: genConfig,
-      })
-      setGeneratedPreview(saved)
-      setQuestionCounts((curr) => {
-        const next = new Map(curr)
-        next.set(materialId, (next.get(materialId) ?? 0) + saved.length)
-        return next
-      })
-      showToast("success", `Added ${saved.length} questions to your bank`)
-    } catch (e) {
-      console.error("❌ Question generation failed:", e)
-      showToast("error", e?.message || "Generation failed")
-    } finally {
-      setGenerating(false)
-    }
-  }
+  }, [pendingDelete, deleteBusy, draftId, showToast])
 
   /* ----------------------- Sidebar counts ---------------------------------- */
   const textCountsByCategory = useMemo(() => {
@@ -430,57 +426,104 @@ export default function TextStudio({
   const totalTextCount = items.length
   const uncatTextCount = textCountsByCategory.get("__uncat__") ?? 0
 
+  const activeTitle = useMemo(() => {
+    if (activeNavId === ALL_ID) return "All notes"
+    if (activeNavId === UNCAT_ID) return "Uncategorized"
+    return categoriesWithCounts.find((c) => c.id === activeNavId)?.title || "Notes"
+  }, [activeNavId, categoriesWithCounts])
+
+  const filteredItems = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return items
+    return items.filter(
+      (row) =>
+        row.title?.toLowerCase().includes(q) ||
+        row.content?.toLowerCase().includes(q) ||
+        row.category?.title?.toLowerCase().includes(q),
+    )
+  }, [items, query])
+
   /* ----------------------- Render ------------------------------------------ */
   const editorOpen = isNewDraft || draftId !== null
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-      <div className="space-y-3">
-        <CategorySidebar
-          categories={sidebarCategories}
-          activeId={activeNavId}
-          onSelect={onSelectNav}
-          onCreate={onCreateCategory}
-          onEdit={onEditCategory}
-          onDelete={onDeleteCategory}
-          loading={categoriesLoading}
-          totalCount={totalTextCount}
-          uncategorizedCount={uncatTextCount}
-        />
-        <ContentList
-          loading={listLoading}
-          items={items}
-          selectedId={draftId}
-          questionCounts={questionCounts}
-          onSelect={handleSelectRow}
-          onNew={handleNew}
-          onRename={handleRename}
-          onDuplicate={handleDuplicate}
-          onDelete={setPendingDelete}
-        />
-      </div>
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <CategorySidebar
+        categories={sidebarCategories}
+        activeId={activeNavId}
+        onSelect={onSelectNav}
+        onCreate={onCreateCategory}
+        onEdit={onEditCategory}
+        onDelete={onDeleteCategory}
+        loading={categoriesLoading}
+        totalCount={totalTextCount}
+        uncategorizedCount={uncatTextCount}
+      />
 
       <div className="min-w-0 space-y-4">
         {!editorOpen ? (
-          <div className="grid place-items-center rounded-2xl border border-dashed border-[#dbe0ee] bg-white px-4 py-14 text-center">
-            <div className="grid h-14 w-14 place-items-center rounded-2xl bg-[#f4f3ff] text-[#6562f1]">
-              <StickyNote className="h-7 w-7" />
+          <section className="min-w-0">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-[#5f4ce6]" />
+                <h2 className="truncate text-sm font-semibold text-[#151d3a]">{activeTitle}</h2>
+                <span className="rounded-full bg-[#f1f3f8] px-2 text-[11px] font-semibold text-[#5d6580]">
+                  {filteredItems.length}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                <button
+                  type="button"
+                  onClick={handleNew}
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5a56e2]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Notes
+                </button>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9aa3c2]" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search notes"
+                    className="h-10 w-full rounded-xl border border-[#e3e6ef] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#6562f1] sm:w-64"
+                  />
+                </div>
+              </div>
             </div>
-            <p className="mt-3 text-base font-semibold text-[#151d3a]">No content open</p>
-            <p className="mt-1 max-w-md text-sm text-[#7f88a6]">
-              Create a new note or pick one from the list. Saved text is the source of truth for question generation.
-            </p>
-            <button
-              type="button"
-              onClick={handleNew}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#6562f1] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#5a56e2]"
-            >
-              <Plus className="h-4 w-4" />
-              Create new content
-            </button>
-          </div>
+
+            <ContentList
+              fillHeight
+              showHeader={false}
+              emptyHint={
+                !listLoading && items.length > 0 && filteredItems.length === 0
+                  ? "No notes match your search."
+                  : 'No notes yet. Click "+ Add Notes" to paste your first set of course notes.'
+              }
+              loading={listLoading}
+              items={filteredItems}
+              selectedId={draftId}
+              questionCounts={questionCounts}
+              onPreview={handleSelectRow}
+              onEdit={handleEditRow}
+              onNew={handleNew}
+              onMove={handleMoveNote}
+              onDuplicate={handleDuplicate}
+              onExport={handleExportNote}
+              onDelete={setPendingDelete}
+            />
+          </section>
         ) : (
           <>
+            <button
+              type="button"
+              onClick={closeEditor}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-[#596286] transition hover:bg-[#f6f7fc] hover:text-[#151d3a]"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to notes
+            </button>
             <TextEditor
               title={title}
               onTitleChange={setTitle}
@@ -489,57 +532,46 @@ export default function TextStudio({
               categories={categoriesWithCounts}
               categoryId={categoryId}
               onCategoryChange={setCategoryId}
-              onSave={() => performSave()}
+              categoryTitle={categoryTitle}
+              displayTitle={displayNoteTitle({ title, content, category_id: categoryId })}
+              onEdit={() => setMode("edit")}
+              onCancel={handleCancelEdit}
+              onSave={() => performSave({ openPreviewAfter: true })}
               saving={saving}
-              disabled={generating}
               isNewDraft={isNewDraft && !draftId}
               saveStatus={displayedSaveStatus}
               mode={mode}
-              onChangeMode={(next) => {
-                setMode(next)
-                if (next === "preview") console.log("📚 Preview loaded")
-              }}
-            />
-            <GeneratePanel
-              config={genConfig}
-              onConfigChange={(patch) => setGenConfig((c) => ({ ...c, ...patch }))}
-              onGenerate={handleGenerate}
-              generating={generating}
-              canGenerate={Boolean(
-                content.trim() && categoryId && genConfig.mcq + genConfig.short + genConfig.essay > 0,
-              )}
             />
 
-            {generatedPreview.length > 0 ? (
-              <div>
-                <h3 className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-[#151d3a]">
-                  <Sparkles className="h-4 w-4 text-[#6562f1]" /> Just generated
-                </h3>
-                <QuestionList questions={generatedPreview} emptyMessage="" />
-              </div>
+            {mode === "preview" && draftId ? (
+              <Link
+                to={`/teacher-dashboard/generate-exam?noteId=${draftId}`}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#cfc8ff] bg-[#f4f3ff] px-4 py-3 text-sm font-semibold text-[#5f4ce6] transition hover:bg-[#ebe8ff]"
+              >
+                <Sparkles className="h-4 w-4 shrink-0" />
+                ⚡ Use this note to generate an exam →
+              </Link>
             ) : null}
           </>
         )}
 
-        <p className="text-xs text-[#8a93ad]">
-          PDF uploads in the Files tab are for storage only. This studio never reads files — question generation always uses
-          the text you paste above.
-        </p>
+        
       </div>
 
-      <RenameDialog
-        open={Boolean(pendingRename)}
-        title="Rename note"
-        label="Note title"
-        helper={
-          pendingRename?.category?.title
-            ? `In subject "${pendingRename.category.title}".`
-            : "Give this note a clear, searchable title."
+      <MoveMaterialDialog
+        open={Boolean(pendingMoveNote)}
+        material={
+          pendingMoveNote
+            ? {
+                title: displayNoteTitle(pendingMoveNote) || "Untitled note",
+                category_id: pendingMoveNote.category_id,
+              }
+            : null
         }
-        initialValue={pendingRename?.title || ""}
-        confirmLabel="Save title"
-        onConfirm={handleConfirmRename}
-        onCancel={() => !renameBusy && setPendingRename(null)}
+        categories={categoriesWithCounts}
+        busy={moveNoteBusy}
+        onConfirm={handleConfirmMoveNote}
+        onCancel={() => !moveNoteBusy && setPendingMoveNote(null)}
       />
 
       <ConfirmDialog
@@ -551,7 +583,10 @@ export default function TextStudio({
           pendingDelete ? (
             <>
               <p>
-                <strong className="text-[#151d3a]">{pendingDelete.title || "Untitled"}</strong> will
+                <strong className="text-[#151d3a]">
+                  {pendingDelete ? displayNoteTitle(pendingDelete) || "Untitled note" : ""}
+                </strong>{" "}
+                will
                 be removed from your library.
               </p>
               <p className="mt-2 text-xs text-[#7f88a6]">

@@ -13,7 +13,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   const location = useLocation()
 
   if (!initialized || loading) {
-    return <FullPageLoader title="Checking your session…" subtitle="Securing your workspace…" />
+    return <FullPageLoader title="Checking your session…"  />
   }
 
   if (!session || !user) {

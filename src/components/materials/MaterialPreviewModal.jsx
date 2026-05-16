@@ -1,14 +1,10 @@
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { ExternalLink, X } from "lucide-react"
-import { inlineUrl } from "../../services/cloudinaryService"
+import { materialViewUrl, pptEmbedUrl } from "../../services/cloudinaryService"
 
 /**
- * Lightweight preview modal. Shows images inline and PDFs in an iframe;
- * always exposes an "Open original" link for new-tab fallback.
- *
- * @param {object} props
- * @param {object|null} props.material
- * @param {() => void} props.onClose
+ * Preview modal for PDF (inline) and PowerPoint (Office Online embed).
+ * Always exposes an "Open original" link for a new-tab fallback.
  */
 export default function MaterialPreviewModal({ material, onClose }) {
   useEffect(() => {
@@ -20,12 +16,19 @@ export default function MaterialPreviewModal({ material, onClose }) {
     return () => window.removeEventListener("keydown", onKey)
   }, [material, onClose])
 
-  if (!material) return null
+  const viewUrl = useMemo(() => (material ? materialViewUrl(material) : ""), [material])
 
-  const url = inlineUrl(material.file_url)
-  const isImage = material.material_type === "image"
-  const isPdf = material.material_type === "pdf"
-  const isVideo = material.material_type === "video"
+  const isPdf = material?.material_type === "pdf"
+  const isPpt = material?.material_type === "ppt"
+
+  const embedSrc = useMemo(() => {
+    if (!viewUrl) return ""
+    if (isPdf) return viewUrl
+    if (isPpt) return pptEmbedUrl(viewUrl)
+    return viewUrl
+  }, [viewUrl, isPdf, isPpt])
+
+  if (!material) return null
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="presentation">
@@ -44,11 +47,11 @@ export default function MaterialPreviewModal({ material, onClose }) {
         <header className="flex items-center justify-between gap-3 border-b border-[#eef1f7] px-4 py-3 sm:px-5">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-[#151d3a]">{material.title}</p>
-            <p className="text-xs text-[#7f88a6]">{material.material_type.toUpperCase()}</p>
+            <p className="text-xs text-[#7f88a6]">{isPpt ? "SLIDES" : material.material_type.toUpperCase()}</p>
           </div>
           <div className="flex items-center gap-1.5">
             <a
-              href={url}
+              href={viewUrl}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 rounded-lg border border-[#e3e6ef] bg-white px-2.5 py-1.5 text-xs font-medium text-[#313a58] transition hover:bg-[#fafbff]"
@@ -66,22 +69,29 @@ export default function MaterialPreviewModal({ material, onClose }) {
           </div>
         </header>
 
-        <div className="flex min-h-[320px] flex-1 items-center justify-center overflow-auto bg-[#f4f6fb] p-3">
-          {isImage ? (
-            <img src={material.file_url} alt={material.title} className="max-h-[75vh] w-auto rounded-xl" />
-          ) : isPdf ? (
-            <iframe
-              src={url}
-              title={material.title}
-              className="h-[75vh] w-full rounded-xl border border-[#e7eaf3] bg-white"
-            />
-          ) : isVideo ? (
-            <video src={material.file_url} controls className="max-h-[75vh] w-full rounded-xl bg-black" />
+        <div className="flex min-h-[320px] flex-1 flex-col overflow-hidden bg-[#f4f6fb] p-3">
+          {isPdf || isPpt ? (
+            <>
+              <iframe
+                src={embedSrc}
+                title={material.title}
+                className="min-h-[min(75vh,720px)] w-full flex-1 rounded-xl border border-[#e7eaf3] bg-white"
+              />
+              {isPpt ? (
+                <p className="mt-2 text-center text-xs text-[#7f88a6]">
+                  Slides load via Microsoft Office Online. If preview is blank, use{" "}
+                  <a href={viewUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#6562f1] underline">
+                    Open original
+                  </a>
+                  .
+                </p>
+              ) : null}
+            </>
           ) : (
-            <div className="text-center text-sm text-[#5d6580]">
+            <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-[#5d6580]">
               Preview not available.
               <br />
-              <a href={url} target="_blank" rel="noreferrer" className="font-semibold text-[#6562f1] underline">
+              <a href={viewUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#6562f1] underline">
                 Open in new tab
               </a>
             </div>
