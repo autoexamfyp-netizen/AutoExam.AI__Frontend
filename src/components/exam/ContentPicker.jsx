@@ -2,7 +2,6 @@ import { useMemo, useState } from "react"
 import { FileText, FolderOpen, Search } from "lucide-react"
 
 const ALL_ID = "__all__"
-const UNCAT_ID = "__uncategorized__"
 
 function relative(when) {
   if (!when) return ""
@@ -22,7 +21,7 @@ function relative(when) {
  * @param {Array<{id:string,title:string,material_count?:number}>} props.categories
  * @param {Array<{id:string,title:string,content:string,category_id?:string|null,
  *                category?:{id:string,title:string},updated_at?:string}>} props.materials
- * @param {string|null} props.activeCategoryId   Category filter ('__all__'|'__uncategorized__'|<uuid>)
+ * @param {string|null} props.activeCategoryId   Category filter ('__all__'|<uuid>)
  * @param {(id: string) => void} props.onChangeCategory
  * @param {string|null} props.activeMaterialId
  * @param {(material: object) => void} props.onSelectMaterial
@@ -64,7 +63,6 @@ export default function ContentPicker({
           className="mt-1 w-full rounded-lg border border-[#e3e6ef] bg-white px-2.5 py-2 text-sm focus:border-[#6562f1] focus:outline-none"
         >
           <option value={ALL_ID}>All subjects</option>
-          <option value={UNCAT_ID}>Uncategorized</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
               {c.title}
@@ -84,7 +82,7 @@ export default function ContentPicker({
 
       {prefillFromTitle ? (
         <div className="mx-3 mt-2 rounded-lg border border-[#e3deff] bg-[#f4f3ff] px-3 py-2 text-xs font-medium text-[#5f4ce6]">
-          📄 Pre-filled from: {prefillFromTitle}
+          Pre-filled from: {prefillFromTitle}
         </div>
       ) : null}
 
@@ -96,8 +94,12 @@ export default function ContentPicker({
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[#dbe0ee] p-6 text-center text-xs text-[#7f88a6]">
-            No saved content here yet. Create some in <span className="font-semibold">Materials → Text studio</span>.
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#dbe0ee] px-4 py-8 text-center">
+            <p className="text-sm font-medium text-[#151d3a]">No course content saved yet</p>
+            <p className="mt-2 max-w-[220px] text-xs leading-relaxed text-[#7d86a5]">
+              Head over to Materials → Course Notes to add your lecture text, then come back here to generate an
+              exam from it.
+            </p>
           </div>
         ) : (
           <ul className="space-y-1.5">
@@ -159,4 +161,3 @@ export default function ContentPicker({
 }
 
 ContentPicker.ALL_ID = ALL_ID
-ContentPicker.UNCAT_ID = UNCAT_ID

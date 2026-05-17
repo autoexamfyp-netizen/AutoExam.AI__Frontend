@@ -37,6 +37,22 @@ export async function resendSignupOtp(email) {
   })
 }
 
+/**
+ * Returns whether a Supabase Auth account exists for this email (password recovery).
+ * Requires `email_exists_for_password_recovery` RPC in Supabase (see Backend/sql/010_*).
+ */
+export async function checkAccountExistsForRecovery(email) {
+  const normalized = email.trim()
+  if (!normalized) return { exists: false, error: null }
+
+  const { data, error } = await supabase.rpc("email_exists_for_password_recovery", {
+    check_email: normalized,
+  })
+
+  if (error) return { exists: null, error }
+  return { exists: Boolean(data), error: null }
+}
+
 /** Re-triggers recovery email (link or OTP per your Supabase template). */
 export async function resendRecoveryOtp(email) {
   return supabase.auth.resetPasswordForEmail(email.trim(), {

@@ -43,9 +43,4 @@ export function noteWordCount(content) {
   return clean.trim().split(/\s+/).length
 }
 
-/** Broken exam titles saved from old UI placeholders. */
-export function isBrokenExamTitle(title) {
-  const t = (title || "").trim()
-  if (!t) return true
-  return /category\s*select\s*category/i.test(t) || /select category/i.test(t)
-}
+export { isBrokenExamTitle } from "../../utils/examTitle"

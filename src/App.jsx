@@ -143,7 +143,6 @@ function Navbar() {
   const links = [
     { label: "Features", href: "#features" },
     { label: "How It Works", href: "#how-it-works" },
-    { label: "Demo", href: "#demo" },
     { label: "About", href: "#about" },
     { label: "Contact", href: "#contact" },
   ]

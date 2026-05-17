@@ -6,6 +6,10 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
   const [initialized, setInitialized] = useState(false)
+  /** Blocks GuestRoute auto-redirect while LoginPage validates role vs credentials. */
+  const [loginFlowActive, setLoginFlowActive] = useState(false)
+  /** Blocks GuestRoute while forgot-password OTP + reset flow is in progress. */
+  const [recoveryFlowActive, setRecoveryFlowActive] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -56,10 +60,14 @@ export function AuthProvider({ children }) {
       user,
       initialized,
       loading: !initialized,
+      loginFlowActive,
+      setLoginFlowActive,
+      recoveryFlowActive,
+      setRecoveryFlowActive,
       signOut,
       refreshSession,
     }),
-    [session, user, initialized, signOut, refreshSession],
+    [session, user, initialized, loginFlowActive, recoveryFlowActive, signOut, refreshSession],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

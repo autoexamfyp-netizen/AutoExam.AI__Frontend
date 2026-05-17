@@ -7,6 +7,7 @@ import StatCard from "../../components/student/StatCard"
 import StatusBadge from "../../components/student/StatusBadge"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import { fetchStudentDashboard } from "../../services/dashboardService"
+import { displayExamTitle } from "../../utils/examTitle"
 
 function NotificationRow({ item }) {
   const tone =
@@ -203,7 +204,7 @@ export default function StudentDashboardHomePage() {
             activeExams.map((row) => {
               const p = row.published
               const publishedId = p.id
-              const title = p.title
+              const title = displayExamTitle(p.title)
               const subj = p.category?.title
               const canContinue = row.studentStatus === "in_progress" && row.windowStatus !== "expired"
               const canStart = row.studentStatus === "active" && row.windowStatus === "active"

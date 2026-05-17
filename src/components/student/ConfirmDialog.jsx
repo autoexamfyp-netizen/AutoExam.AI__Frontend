@@ -10,6 +10,8 @@ import { AlertTriangle, Loader2 } from "lucide-react"
  * @param {string|React.ReactNode} props.message
  * @param {string} [props.confirmLabel]
  * @param {string} [props.cancelLabel]
+ * @param {string} [props.secondaryLabel] Optional middle action (e.g. non-destructive leave).
+ * @param {() => void | Promise<void>} [props.onSecondary]
  * @param {boolean} [props.destructive]   When true, paints the confirm button red and shows a warning icon.
  * @param {boolean} [props.busy]          When true, disables both buttons and shows a spinner on confirm.
  * @param {() => void | Promise<void>} props.onConfirm
@@ -21,6 +23,8 @@ export default function ConfirmDialog({
   message,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
+  secondaryLabel,
+  onSecondary,
   destructive = false,
   busy = false,
   onConfirm,
@@ -91,6 +95,16 @@ export default function ConfirmDialog({
           >
             {cancelLabel}
           </button>
+          {onSecondary && secondaryLabel ? (
+            <button
+              type="button"
+              onClick={onSecondary}
+              disabled={busy}
+              className="h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-4 text-sm font-semibold text-[#5f4ce6] transition hover:bg-[#fafbff] disabled:opacity-60 sm:w-auto"
+            >
+              {secondaryLabel}
+            </button>
+          ) : null}
           <button
             ref={confirmRef}
             type="button"

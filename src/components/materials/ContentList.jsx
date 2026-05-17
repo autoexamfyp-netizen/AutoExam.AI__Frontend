@@ -49,15 +49,20 @@ export default function ContentList({
   onDelete,
   fillHeight = false,
   showHeader = true,
+  embedded = false,
   emptyHint,
 }) {
   const [openMenuId, setOpenMenuId] = useState(null)
 
   return (
     <div
-      className={`flex min-h-0 flex-col rounded-2xl border border-[#e7eaf3] bg-white shadow-sm ${
-        fillHeight ? "min-h-[min(56vh,640px)]" : ""
-      }`}
+      className={
+        embedded
+          ? "flex min-h-0 flex-1 flex-col"
+          : `flex min-h-0 flex-col rounded-2xl border border-[#e7eaf3] bg-white shadow-sm ${
+              fillHeight ? "min-h-[min(56vh,640px)]" : ""
+            }`
+      }
     >
       {showHeader ? (
         <div className="flex items-center justify-between gap-2 border-b border-[#eef1f7] px-3 py-2">
@@ -75,8 +80,8 @@ export default function ContentList({
       ) : null}
 
       <div
-        className={`flex-1 overflow-y-auto p-3 ${
-          fillHeight ? "min-h-[min(48vh,560px)]" : "max-h-[min(520px,55vh)]"
+        className={`flex-1 overflow-y-auto ${embedded ? "p-0" : "p-3"} ${
+          embedded ? "" : fillHeight ? "min-h-[min(48vh,560px)]" : "max-h-[min(520px,55vh)]"
         }`}
       >
         {loading ? (
@@ -86,21 +91,19 @@ export default function ContentList({
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center px-3 py-8 text-center">
+          <div
+            className={`flex flex-col items-center justify-center px-6 text-center ${
+              embedded || fillHeight ? "min-h-[min(280px,40vh)] py-12" : "py-10"
+            }`}
+          >
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#f4f3ff] text-[#6562f1]">
               <StickyNote className="h-6 w-6" />
             </div>
-            <p className="mt-3 text-sm font-semibold text-[#151d3a]">No notes yet</p>
-            <p className="mt-1 text-xs text-[#7f88a6]">
-              {emptyHint || 'Click "+ Add Notes" to paste your first set of course notes.'}
+            <p className="mt-4 max-w-sm text-base font-medium text-[#151d3a]">No notes saved here yet</p>
+            <p className="mt-2 max-w-sm text-sm leading-relaxed text-[#7d86a5]">
+              {emptyHint ||
+                "Add lecture notes or chapter text above and use them to generate exam questions instantly."}
             </p>
-            <button
-              type="button"
-              onClick={onNew}
-              className="mt-3 inline-flex items-center gap-1 rounded-lg bg-[#6562f1] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#5a56e2]"
-            >
-              <Plus className="h-3.5 w-3.5" /> Add Notes
-            </button>
           </div>
         ) : (
           <ul className="space-y-3">

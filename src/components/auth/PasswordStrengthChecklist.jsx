@@ -27,7 +27,35 @@ export default function PasswordStrengthChecklist({
   password,
   confirmPassword = "",
   showMatch = true,
+  /** When true, only renders the passwords-match line (for confirm password field). */
+  matchOnly = false,
 }) {
+  const passwordsMatch =
+    password.length > 0 && confirmPassword.length > 0 && password === confirmPassword
+  const passwordsMismatch =
+    confirmPassword.length > 0 && password.length > 0 && password !== confirmPassword
+
+  if (matchOnly) {
+    if (!showMatch || confirmPassword.length === 0) return null
+    return (
+      <p
+        className={`flex items-center gap-1.5 text-xs font-medium ${
+          passwordsMatch ? "text-emerald-700" : passwordsMismatch ? "text-red-600" : "text-[#6d7390]"
+        }`}
+        role="status"
+      >
+        {passwordsMatch ? (
+          <>
+            <Check className="h-3.5 w-3.5" aria-hidden />
+            Passwords match
+          </>
+        ) : passwordsMismatch ? (
+          "Passwords do not match"
+        ) : null}
+      </p>
+    )
+  }
+
   const rules = getPasswordRuleStatus(password)
   const level = getPasswordStrengthLevel(password)
   const filled = getPasswordStrengthBarSegments(level)
@@ -40,11 +68,6 @@ export default function PasswordStrengthChecklist({
       </p>
     )
   }
-
-  const passwordsMatch =
-    password.length > 0 && confirmPassword.length > 0 && password === confirmPassword
-  const passwordsMismatch =
-    confirmPassword.length > 0 && password.length > 0 && password !== confirmPassword
 
   return (
     <div className="space-y-3">

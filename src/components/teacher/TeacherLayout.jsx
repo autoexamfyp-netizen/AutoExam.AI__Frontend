@@ -1,5 +1,9 @@
 import { createElement, useEffect, useRef, useState } from "react"
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
+import { NavLink, Outlet, useNavigate, useOutletContext } from "react-router-dom"
+
+export function useTeacherHeader() {
+  return useOutletContext() || {}
+}
 import {
   BarChart3,
   Bot,
@@ -36,32 +40,6 @@ const NAV = [
   { to: "/teacher-dashboard/feedback", label: "Feedback", icon: MessageSquare },
 ]
 
-const EXTRA_ROUTES = [
-  { to: "/teacher-dashboard/settings", label: "Settings", icon: SettingsIcon },
-]
-
-function normalizePathname(pathname) {
-  const trimmed = (pathname || "").replace(/\/+$/, "")
-  return trimmed || "/teacher-dashboard"
-}
-
-/** Longest-prefix match for header breadcrumb (label + icon). */
-function pageMetaFromPath(pathname) {
-  const path = normalizePathname(pathname)
-  const routes = [...NAV, ...EXTRA_ROUTES]
-  const match = routes
-    .sort((a, b) => b.to.length - a.to.length)
-    .find((item) =>
-      item.end ? path === item.to : path === item.to || path.startsWith(`${item.to}/`),
-    )
-  const icon = match?.icon ?? LayoutDashboard
-  return {
-    label: match?.label ?? "Dashboard",
-    icon: typeof icon === "object" && icon !== null ? icon : LayoutDashboard,
-    isDashboard: path === "/teacher-dashboard",
-  }
-}
-
 function renderNavIcon(Icon, className) {
   const Resolved = Icon ?? LayoutDashboard
   if (typeof Resolved !== "object" && typeof Resolved !== "function") {
@@ -72,18 +50,16 @@ function renderNavIcon(Icon, className) {
 
 export default function TeacherLayout() {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
   const { user, signOut } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [error, setError] = useState("")
   const [profileOpen, setProfileOpen] = useState(false)
+  const [headerBreadcrumb, setHeaderBreadcrumb] = useState(null)
 
   const profileRef = useRef(null)
 
   const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Teacher"
   const userEmail = user?.email || ""
-  const pageMeta = pageMetaFromPath(pathname)
-
   const closeMobile = () => setMobileOpen(false)
 
   useEffect(() => {
@@ -216,25 +192,29 @@ export default function TeacherLayout() {
               >
                 <Menu className="h-5 w-5" />
               </button>
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#f1efff] text-[#5f4ce6]">
-                  {renderNavIcon(pageMeta.icon, "h-4 w-4")}
-                </span>
-                <div className="min-w-0">
-                  {pageMeta.isDashboard ? (
-                    <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-[#151d3a] sm:text-sm">
-                      {pageMeta.label}
-                    </p>
-                  ) : (
-                    <>
-                      
-                      <p className="truncate text-sm font-semibold leading-tight text-[#151d3a] sm:text-base">
-                        {pageMeta.label}
-                      </p>
-                    </>
-                  )}
-                </div>
-              </div>
+              {headerBreadcrumb?.length ? (
+                <nav
+                  className="flex min-w-0 items-center gap-1.5 truncate text-sm font-semibold sm:text-base"
+                  aria-label="Breadcrumb"
+                >
+                  {headerBreadcrumb.map((segment, index) => (
+                    <span key={`${segment}-${index}`} className="flex min-w-0 items-center gap-1.5">
+                      {index > 0 ? <span className="shrink-0 text-[#9aa3c2] font-normal">&gt;</span> : null}
+                      <span
+                        className={
+                          index === headerBreadcrumb.length - 1
+                            ? "truncate text-[#151d3a]"
+                            : "truncate text-[#7f88a6] font-medium"
+                        }
+                      >
+                        {segment}
+                      </span>
+                    </span>
+                  ))}
+                </nav>
+              ) : (
+                <p className="truncate text-sm font-semibold text-[#151d3a] sm:text-base">Teacher Portal</p>
+              )}
             </div>
 
             <NavLink
@@ -253,7 +233,7 @@ export default function TeacherLayout() {
                 {error}
               </div>
             ) : null}
-            <Outlet key={user?.id ?? "signed-out"} />
+            <Outlet key={user?.id ?? "signed-out"} context={{ setHeaderBreadcrumb }} />
           </main>
         </div>
       </div>

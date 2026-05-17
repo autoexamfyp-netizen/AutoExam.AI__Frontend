@@ -7,7 +7,7 @@ import Spinner from "../ui/Spinner"
 import { formatAuthError } from "../../auth/formatAuthError"
 
 /**
- * Reusable OTP entry + verify + resend. Auth calls live in otpService.
+ * Reusable OTP entry + verify + resend.
  *
  * @param {object} props
  * @param {string} props.email
@@ -16,6 +16,7 @@ import { formatAuthError } from "../../auth/formatAuthError"
  * @param {string} [props.title]
  * @param {string} [props.subtitle]
  * @param {boolean} [props.autoSubmit]
+ * @param {boolean} [props.embedded] Hide title/subtitle when the parent page provides them.
  */
 export default function OtpVerificationForm({
   email,
@@ -24,13 +25,13 @@ export default function OtpVerificationForm({
   title = "Enter verification code",
   subtitle,
   autoSubmit = false,
+  embedded = false,
 }) {
   const [otp, setOtp] = useState("")
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
-  /** Distinguish verify failures (highlight OTP) from resend failures */
   const [errorSource, setErrorSource] = useState(/** @type {'verify' | 'resend' | null} */ (null))
   const verifyLock = useRef(false)
   const runVerifyRef = useRef(async () => {})
@@ -39,8 +40,8 @@ export default function OtpVerificationForm({
 
   const defaultSubtitle =
     flow === "recovery"
-      ? "Enter the code from your password reset email."
-      : "Enter the code from your confirmation email."
+      ? "Enter the verification code from your password reset email."
+      : `Enter the ${OTP_CODE_LENGTH}-digit code we sent to your inbox.`
 
   const runVerify = useCallback(async () => {
     if (!email?.trim() || otp.length < OTP_CODE_LENGTH || verifyLock.current) return
@@ -83,9 +84,7 @@ export default function OtpVerificationForm({
     setErrorSource(null)
     setResending(true)
     const res =
-      flow === "recovery"
-        ? await resendRecoveryOtp(email)
-        : await resendSignupOtp(email)
+      flow === "recovery" ? await resendRecoveryOtp(email) : await resendSignupOtp(email)
     setResending(false)
     if (res.error) {
       setError(formatAuthError(res.error))
@@ -99,11 +98,17 @@ export default function OtpVerificationForm({
   const invalid = Boolean(error && errorSource === "verify")
 
   return (
-    <div className="w-full max-w-md">
-      <h3 className="text-center text-lg font-semibold text-[#11162e]">{title}</h3>
-      <p className="mt-2 text-center text-sm leading-relaxed text-[#7b809a]">{subtitle || defaultSubtitle}</p>
+    <div className="w-full">
+      {!embedded ? (
+        <>
+          <h3 className="text-center text-lg font-semibold text-[#11162e]">{title}</h3>
+          <p className="mt-2 text-center text-sm leading-relaxed text-[#7b809a]">
+            {subtitle || defaultSubtitle}
+          </p>
+        </>
+      ) : null}
 
-      <div className="mt-6">
+      <div className={embedded ? "mt-2" : "mt-6"}>
         <OtpInput
           length={OTP_CODE_LENGTH}
           value={otp}
@@ -115,10 +120,10 @@ export default function OtpVerificationForm({
       </div>
 
       {success ? (
-        <p className="mt-4 text-center text-sm font-medium text-green-600 transition-opacity duration-200">Verified successfully.</p>
+        <p className="mt-4 text-center text-sm font-medium text-emerald-700">Email verified. Redirecting…</p>
       ) : null}
       {error ? (
-        <p className="mt-4 text-center text-sm text-red-500 transition-opacity duration-200" role="alert">
+        <p className="mt-4 text-center text-sm text-red-600" role="alert">
           {error}
         </p>
       ) : null}
@@ -127,10 +132,10 @@ export default function OtpVerificationForm({
         type="button"
         disabled={success || otp.length < OTP_CODE_LENGTH || verifying}
         onClick={runVerify}
-        className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-base font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-base font-semibold text-white transition hover:bg-[#5a56e2] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {verifying ? <Spinner size="sm" decorative /> : null}
-        {success ? "Verified" : verifying ? "Verifying…" : "Verify code"}
+        {success ? "Verified" : verifying ? "Verifying…" : flow === "recovery" ? "Verify code" : "Verify email"}
       </button>
 
       <div className="mt-4 text-center">
@@ -140,13 +145,12 @@ export default function OtpVerificationForm({
           onClick={handleResend}
           className="text-sm font-medium text-[#6e63f6] transition hover:text-[#5d52e5] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {resending ? "Sending…" : canResend ? "Resend code" : `Resend code in ${remaining}s`}
+          {resending ? "Sending new code…" : canResend ? "Resend code" : `Resend code in ${remaining}s`}
         </button>
       </div>
 
-      <p className="mt-3 text-center text-xs text-[#99a0b7]">
-        Codes expire for security. If emails only contain a link, use the link or enable OTP in your Supabase email templates (
-        {"{{ .Token }}"}).
+      <p className="mt-3 text-center text-xs leading-relaxed text-[#99a0b7]">
+        Codes expire after a few minutes for your security. Check your spam folder if you do not see the email.
       </p>
     </div>
   )

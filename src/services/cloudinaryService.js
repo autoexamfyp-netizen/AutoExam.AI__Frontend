@@ -126,7 +126,7 @@ export function uploadToCloudinary(file, opts = {}) {
     }
 
     xhr.onabort = () => {
-      console.warn("⚠️ Upload aborted")
+      console.warn("[warning] Upload aborted")
       reject(new DOMException("Upload aborted", "AbortError"))
     }
 

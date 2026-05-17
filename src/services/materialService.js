@@ -143,7 +143,7 @@ export async function saveMaterial(args) {
     lastError = error
     const missing = isMissingColumnError(error)
     if (missing && OPTIONAL_COLUMNS.includes(missing) && !omit.includes(missing)) {
-      console.warn(`⚠️ Column '${missing}' missing on materials — retrying without it.`)
+      console.warn(`[warning] Column '${missing}' missing on materials - retrying without it.`)
       omit.push(missing)
       continue
     }

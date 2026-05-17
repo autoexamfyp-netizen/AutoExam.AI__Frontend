@@ -35,6 +35,7 @@ import {
   updatePublishedExam,
 } from "../../services/publishedExamService"
 import { duplicateExam } from "../../services/examService"
+import { displayExamTitle } from "../../utils/examTitle"
 
 const STATUS = {
   ALL: "all",
@@ -135,7 +136,7 @@ export default function TeacherPublishedExamsPage() {
     } catch (e) {
       setError(
         e?.message?.includes("Failed to fetch")
-          ? "Backend not running — start /Backend on port 4000."
+          ? "Unable to connect. Please try again."
           : e?.message || "Could not load published exams.",
       )
     } finally {
@@ -602,7 +603,7 @@ export default function TeacherPublishedExamsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-base font-semibold text-[#151d3a]">
-                        {p.title?.trim() || "Untitled exam"}
+                        {displayExamTitle(p.title)}
                       </h2>
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${badge.className}`}

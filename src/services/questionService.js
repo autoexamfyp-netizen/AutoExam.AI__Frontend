@@ -25,6 +25,9 @@ function friendly(error, fallback) {
   if (msg.includes("ai_generated")) {
     return new Error("Missing column question_bank.ai_generated. Run Backend/sql/005_exams.sql.")
   }
+  if (msg.includes("in_bank")) {
+    return new Error("Missing column question_bank.in_bank. Run Backend/sql/011_question_bank_in_bank.sql.")
+  }
   return new Error(error?.message || fallback)
 }
 
@@ -82,6 +85,7 @@ export async function fetchQuestionBank(opts = {}) {
     .from(TABLE)
     .select(SELECT_FULL)
     .eq("created_by", teacherId)
+    .eq("in_bank", true)
     .order("created_at", { ascending: false })
   if (categoryId === "__uncategorized__") q = q.is("category_id", null)
   else if (categoryId) q = q.eq("category_id", categoryId)
@@ -126,6 +130,21 @@ export async function deleteQuestion(id) {
   return true
 }
 
+/** Promote exam-only questions so they appear in the reusable question bank. */
+export async function saveQuestionsToBank(questionIds) {
+  const cleanIds = Array.from(new Set((questionIds || []).filter(Boolean)))
+  if (!cleanIds.length) return []
+  const teacherId = await requireTeacherId()
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ in_bank: true, updated_at: new Date().toISOString() })
+    .in("id", cleanIds)
+    .eq("created_by", teacherId)
+    .select(SELECT_FULL)
+  if (error) throw friendly(error, "Failed to save questions to the bank.")
+  return data ?? []
+}
+
 export async function deleteQuestions(ids) {
   const cleanIds = Array.from(new Set((ids || []).filter(Boolean)))
   if (!cleanIds.length) return true
@@ -152,6 +171,7 @@ export async function createQuestion(row) {
     options: row.options ?? null,
     favorite: !!row.favorite,
     ai_generated: !!row.ai_generated,
+    in_bank: row.in_bank !== false,
   }
   const { data, error } = await supabase.from(TABLE).insert(payload).select(SELECT_FULL).single()
   if (error) throw friendly(error, "Failed to save question.")

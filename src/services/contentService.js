@@ -149,7 +149,7 @@ export async function fetchQuestionCountsByText(textMaterialIds) {
     .in("text_material_id", textMaterialIds)
 
   if (error) {
-    console.warn("⚠️ Could not load question counts:", error.message)
+    console.warn("[warning] Could not load question counts:", error.message)
     return new Map()
   }
   const m = new Map()

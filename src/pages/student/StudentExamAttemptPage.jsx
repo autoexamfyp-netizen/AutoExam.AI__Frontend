@@ -4,6 +4,7 @@ import { Check, ChevronLeft, ChevronRight, Cloud, Loader2, Save, Send } from "lu
 import ConfirmDialog from "../../components/student/ConfirmDialog"
 import EmptyState from "../../components/student/EmptyState"
 import { saveExamDraft, startOrResumeExam, submitExam } from "../../services/studentExamService"
+import { displayExamTitle } from "../../utils/examTitle"
 
 const AUTO_SAVE_MS = 25000
 
@@ -321,7 +322,7 @@ function StudentExamAttemptContent({ publishedId }) {
           </div>
         </div>
         <p className="mx-auto mt-2 min-w-0 max-w-[1200px] break-words text-xs text-[#99a0b7]">
-          {published?.title} · {durationLabel} min allowed · Closing {published?.end_time ? new Date(published.end_time).toLocaleString() : ""}
+          {displayExamTitle(published?.title)} - {durationLabel} min allowed - Closing {published?.end_time ? new Date(published.end_time).toLocaleString() : ""}
         </p>
       </header>
 

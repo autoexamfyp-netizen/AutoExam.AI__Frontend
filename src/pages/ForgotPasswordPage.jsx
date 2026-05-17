@@ -1,18 +1,27 @@
-import { useState } from "react"
-import { Link } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { Link, useNavigate } from "react-router-dom"
 import { AtSign, GraduationCap, LockKeyhole } from "lucide-react"
-import { supabase } from "../lib/supabaseClient"
-import { getPasswordResetRedirectUrl } from "../auth/authPaths"
+import OtpVerificationForm from "../components/otp/OtpVerificationForm"
+import { checkAccountExistsForRecovery, OTP_CODE_LENGTH, resendRecoveryOtp } from "../auth/otpService"
+import { waitForAuthSession } from "../auth/waitForSession"
 import { formatAuthError } from "../auth/formatAuthError"
+import { useAuth } from "../hooks/useAuth"
 import { useLoading } from "../hooks/useLoading"
 import Spinner from "../components/ui/Spinner"
 
 export default function ForgotPasswordPage() {
+  const navigate = useNavigate()
+  const { setRecoveryFlowActive } = useAuth()
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [sent, setSent] = useState(false)
+  const [codeSent, setCodeSent] = useState(false)
   const { run } = useLoading()
+
+  useEffect(() => {
+    setRecoveryFlowActive(codeSent)
+    return () => setRecoveryFlowActive(false)
+  }, [codeSent, setRecoveryFlowActive])
 
   const validate = () => {
     if (!email.trim()) return "Email is required."
@@ -20,7 +29,7 @@ export default function ForgotPasswordPage() {
     return ""
   }
 
-  const handleSubmit = async (e) => {
+  const handleSendCode = async (e) => {
     e.preventDefault()
     setError("")
     const v = validate()
@@ -30,16 +39,42 @@ export default function ForgotPasswordPage() {
     }
     await run(async () => {
       setLoading(true)
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: getPasswordResetRedirectUrl(),
-      })
-      setLoading(false)
-      if (resetError) {
-        setError(formatAuthError(resetError))
+
+      const { exists, error: lookupError } = await checkAccountExistsForRecovery(email.trim())
+      if (lookupError) {
+        setLoading(false)
+        setError(formatAuthError(lookupError))
         return
       }
-      setSent(true)
-    }, "Sending reset email…")
+      if (!exists) {
+        setLoading(false)
+        setError(formatAuthError({ message: "no account found with this email" }))
+        return
+      }
+
+      const { error: sendError } = await resendRecoveryOtp(email.trim())
+      setLoading(false)
+      if (sendError) {
+        setError(formatAuthError(sendError))
+        return
+      }
+      setCodeSent(true)
+    }, "Sending reset code…")
+  }
+
+  const handleOtpSuccess = async () => {
+    const { session } = await waitForAuthSession(25, 100)
+    if (!session?.user) {
+      setError("Verification succeeded but we could not start your reset session. Try again or request a new code.")
+      setCodeSent(false)
+      return
+    }
+    navigate("/auth/reset-password", { replace: true })
+  }
+
+  const handleChangeEmail = () => {
+    setCodeSent(false)
+    setError("")
   }
 
   return (
@@ -55,7 +90,7 @@ export default function ForgotPasswordPage() {
           </div>
           <h1 className="max-w-[340px] text-5xl font-bold leading-[1.05] tracking-[-1px]">Reset your password</h1>
           <p className="mt-5 max-w-[420px] text-lg leading-[1.45] text-[#a9b4d4] sm:text-xl">
-            We will email you a secure link to choose a new password.
+            We will email you a one-time code to verify your identity, then you can choose a new password.
           </p>
         </div>
         <p className="relative z-10 text-sm text-[#9ca8cc]">© 2026 AutoExam.ai (COMSATS University Islamabad, Lahore)</p>
@@ -63,71 +98,79 @@ export default function ForgotPasswordPage() {
 
       <section className="flex min-h-screen w-full items-center justify-center px-4 py-8 sm:px-8 lg:w-[58%]">
         <div className="w-full max-w-[560px]">
-          <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eeebff] text-[#6a55f5]">
-            <LockKeyhole className="h-6 w-6" />
-          </div>
-          <h2 className="text-4xl font-bold tracking-[-0.6px] text-[#11162e] sm:text-5xl">Forgot password</h2>
-          <p className="mt-2 text-base text-[#7b809a]">Enter your account email and we will send reset instructions.</p>
-
-          {sent ? (
-            <div className="mt-8 rounded-2xl border border-[#e3e6ef] bg-white p-6">
-              <p className="text-sm font-medium text-[#1d233d]">Check your inbox</p>
-              <p className="mt-2 text-sm leading-relaxed text-[#6d7491]">
-                If an account exists for <span className="font-medium text-[#1b1f36]">{email}</span>, you will receive an
-                email with a link to reset your password. The link expires after a short time for security.
-              </p>
-              <Link
-                to={`/auth/verify-otp?flow=recovery&email=${encodeURIComponent(email.trim())}`}
-                className="mt-4 block text-center text-sm font-medium text-[#6860f3]"
-              >
-                Enter one-time code instead
-              </Link>
-              <Link to="/login" className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#6562f1] text-sm font-semibold text-white">
-                Back to login
-              </Link>
+          <div className="rounded-2xl border border-[#e3e6ef] bg-white p-8 shadow-sm">
+            <div className="mx-auto mb-6 grid h-14 w-14 place-items-center rounded-2xl bg-[#eeebff] text-[#6a55f5]">
+              <LockKeyhole className="h-7 w-7" />
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#1d233d]">Email address</label>
-                <div className="flex h-12 items-center gap-2 rounded-xl border border-[#e3e6ef] bg-white px-3">
-                  <AtSign className="h-4 w-4 text-[#a2a8bd]" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@institution.edu.pk"
-                    autoComplete="email"
-                    className="h-full w-full border-none bg-transparent text-sm text-[#1b1f36] outline-none"
+
+            {!codeSent ? (
+              <>
+                <h2 className="text-center text-2xl font-bold text-[#11162e]">Forgot password</h2>
+                <p className="mt-3 text-center text-sm leading-relaxed text-[#7b809a]">
+                  Enter your account email and we will send a {OTP_CODE_LENGTH}-digit verification code.
+                </p>
+
+                <form onSubmit={handleSendCode} className="mt-8 space-y-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#1d233d]">Email address</label>
+                    <div className="flex h-12 items-center gap-2 rounded-xl border border-[#e3e6ef] bg-white px-3">
+                      <AtSign className="h-4 w-4 text-[#a2a8bd]" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="name@institution.edu.pk"
+                        autoComplete="email"
+                        className="h-full w-full border-none bg-transparent text-sm text-[#1b1f36] outline-none"
+                      />
+                    </div>
+                  </div>
+                  {error ? <p className="text-sm text-red-600">{error}</p> : null}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading ? <Spinner size="sm" decorative /> : null}
+                    {loading ? "Sending…" : "Send reset code"}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <>
+                <h2 className="text-center text-2xl font-bold text-[#11162e]">Enter reset code</h2>
+                <p className="mt-3 text-center text-sm leading-relaxed text-[#7b809a]">
+                  We sent a <span className="font-medium text-[#1b1f36]">{OTP_CODE_LENGTH}-digit code</span> to{" "}
+                  <span className="font-medium text-[#1b1f36]">{email.trim()}</span>. Enter it below to continue.
+                </p>
+
+                <div className="mt-8">
+                  <OtpVerificationForm
+                    email={email.trim()}
+                    flow="recovery"
+                    onSuccess={handleOtpSuccess}
+                    embedded
+                    autoSubmit
                   />
                 </div>
-              </div>
-              {error ? <p className="text-sm text-red-500">{error}</p> : null}
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading ? <Spinner size="sm" decorative /> : null}
-                {loading ? "Sending…" : "Send reset link"}
-              </button>
-              <p className="mt-4 text-center text-sm text-[#6f7692]">
-                {/* <Link
-                  to={`/auth/verify-otp?flow=recovery&email=${encodeURIComponent(email.trim() || "")}`}
-                  className="font-medium text-[#6860f3]"
-                >
-                  Already have a reset code?
-                </Link> */}
-              </p>
-            </form>
-          )}
 
-          <p className="mt-7 text-center text-sm text-[#6f7692]">
-            Remember your password?{" "}
-            <Link to="/login" className="font-medium text-[#6860f3]">
-              Sign in
-            </Link>
-          </p>
+                <button
+                  type="button"
+                  onClick={handleChangeEmail}
+                  className="mt-4 w-full text-center text-sm font-medium text-[#6e63f6] hover:text-[#5d52e5]"
+                >
+                  Use a different email
+                </button>
+              </>
+            )}
+
+            <p className="mt-8 text-center text-sm text-[#6f7692]">
+              Remember your password?{" "}
+              <Link to="/login" className="font-medium text-[#6860f3]">
+                Sign in
+              </Link>
+            </p>
+          </div>
         </div>
       </section>
     </div>

@@ -30,7 +30,7 @@ export async function fetchExamsGrouped() {
 }
 
 export async function fetchExam(id) {
-  console.log("📄 Opening generated paper:", id)
+  console.log("[folder] Opening generated paper:", id)
   if (!id) throw new Error("Exam id is required.")
   const out = await apiGet(`/api/exams/${id}`)
   if (!out || typeof out !== "object") {

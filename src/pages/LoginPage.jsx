@@ -3,8 +3,9 @@ import { Link, useLocation, useNavigate } from "react-router-dom"
 import { AtSign, GraduationCap, Lock, ShieldCheck, Sparkles, Zap } from "lucide-react"
 import { supabase } from "../lib/supabaseClient"
 import { dashboardPathForRole, isEmailVerified, resolveRole, ROLES } from "../auth/roles"
-import { formatAuthError } from "../auth/formatAuthError"
+import { formatAuthError, formatRoleMismatchError } from "../auth/formatAuthError"
 import PasswordInput from "../components/ui/PasswordInput"
+import { useAuth } from "../hooks/useAuth"
 import { useLoading } from "../hooks/useLoading"
 
 const roleDetails = {
@@ -95,6 +96,7 @@ function RoleToggle({ role, onChange }) {
 export default function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { setLoginFlowActive } = useAuth()
   const [role, setRole] = useState("teacher")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -108,6 +110,21 @@ export default function LoginPage() {
     if (!flashCode) return
     navigate("/login", { replace: true })
   }, [flashCode, navigate])
+
+  useEffect(() => {
+    const message = location.state?.authError
+    if (!message) return
+    setError(message)
+    navigate("/login", { replace: true, state: {} })
+  }, [location.state?.authError, navigate])
+
+  useEffect(() => {
+    if (flashCode === "role_mismatch") {
+      setError(
+        "The role you selected does not match this account. Switch Teacher or Student at the top, then try again.",
+      )
+    }
+  }, [flashCode])
 
   const details = useMemo(() => roleDetails[role], [role])
   const isSampleAccount = (value) => ["teacher@autoexam.com", "student@autoexam.com"].includes(value.trim().toLowerCase())
@@ -129,50 +146,69 @@ export default function LoginPage() {
       return
     }
 
-    await run(async () => {
-      setLoading(true)
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      })
-      setLoading(false)
+    setLoginFlowActive(true)
+    setLoading(true)
 
-      if (authError) {
-        if (authError.message === "Invalid login credentials" && isSampleAccount(email)) {
-          setError("Sample accounts are not provisioned in this Supabase project. Create this user from Sign up first, then log in.")
-          return
+    try {
+      await run(async () => {
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        })
+
+        if (authError) {
+          if (authError.message === "Invalid login credentials" && isSampleAccount(email)) {
+            throw new Error(
+              "Sample accounts are not provisioned in this Supabase project. Create this user from Sign up first, then log in.",
+            )
+          }
+          throw authError
         }
-        setError(formatAuthError(authError))
-        return
-      }
 
-      const signedInUser = data.user
-      if (signedInUser && !isEmailVerified(signedInUser)) {
-        await supabase.auth.signOut()
-        setError("Please verify your email before signing in. Check your inbox for the confirmation link.")
-        return
-      }
+        const signedInUser = data?.user
+        if (!signedInUser) {
+          throw new Error("Sign-in completed but no user was returned. Please try again.")
+        }
 
-      const accountRole = resolveRole(signedInUser)
-      if (accountRole && accountRole !== role) {
-        await supabase.auth.signOut()
-        const accountLabel = accountRole === ROLES.STUDENT ? "Student" : "Teacher"
-        const selectedLabel = role === ROLES.STUDENT ? "Student" : "Teacher"
-        setError(
-          `This email is registered as a ${accountLabel} account, but you have "${selectedLabel}" selected at the top. Switch the role toggle to ${accountLabel}, then sign in again.`,
-        )
-        return
-      }
+        if (!isEmailVerified(signedInUser)) {
+          await supabase.auth.signOut()
+          throw new Error(
+            "Please verify your email before signing in. Enter the verification code we sent to your inbox.",
+          )
+        }
 
-      const userRole = accountRole || role
-      const target = dashboardPathForRole(userRole)
-      const from = location.state?.from
-      if (typeof from === "string" && from.startsWith("/") && !from.startsWith("//")) {
-        navigate(from, { replace: true })
-        return
-      }
-      navigate(target, { replace: true })
-    }, "Signing in…")
+        const accountRole = resolveRole(signedInUser)
+        if (!accountRole) {
+          await supabase.auth.signOut()
+          throw new Error(
+            "Your account is missing a role. Please sign up again or contact support.",
+          )
+        }
+
+        if (accountRole !== role) {
+          await supabase.auth.signOut()
+          throw new Error(formatRoleMismatchError(accountRole, role))
+        }
+
+        const target = dashboardPathForRole(accountRole)
+        const from = location.state?.from
+        if (typeof from === "string" && from.startsWith("/") && !from.startsWith("//")) {
+          const fromRole =
+            from.startsWith("/student-dashboard") ? ROLES.STUDENT : from.startsWith("/teacher-dashboard") ? ROLES.TEACHER : null
+          if (!fromRole || fromRole === accountRole) {
+            navigate(from, { replace: true })
+            return
+          }
+        }
+        navigate(target, { replace: true })
+      }, "Signing in…")
+    } catch (err) {
+      const isSupabaseAuthError = Boolean(err?.status || err?.code || err?.name === "AuthApiError")
+      setError(isSupabaseAuthError ? formatAuthError(err) : err?.message || formatAuthError(err))
+    } finally {
+      setLoading(false)
+      setLoginFlowActive(false)
+    }
   }
 
   return (
@@ -231,7 +267,14 @@ export default function LoginPage() {
               disabled={loading}
             />
 
-            {error ? <p className="text-sm text-red-500">{error}</p> : null}
+            {error ? (
+              <div
+                className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700"
+                role="alert"
+              >
+                {error}
+              </div>
+            ) : null}
 
             <button
               type="submit"
@@ -245,7 +288,7 @@ export default function LoginPage() {
           <p className="mt-7 text-center text-sm text-[#6f7692]">
             Don't have an account?{" "}
             <Link to="/signup" className="font-medium text-[#6860f3]">
-              Request early access
+              Create an account
             </Link>
           </p>
         </div>

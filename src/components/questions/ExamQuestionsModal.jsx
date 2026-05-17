@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { ClipboardCheck, Clock, Loader2, X } from "lucide-react"
 import { fetchExam } from "../../services/examService"
+import { displayExamTitle } from "../../utils/examTitle"
 import QuestionList from "./QuestionList"
 
 /**
@@ -74,7 +75,7 @@ export default function ExamQuestionsModal({
             </span>
             <div className="min-w-0">
               <h2 className="truncate text-base font-semibold text-[#151d3a]">
-                {data?.exam?.title || (loading ? "Loading…" : "Exam")}
+                {data?.exam ? displayExamTitle(data.exam.title) : loading ? "Loading..." : "Exam"}
               </h2>
               <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#7f88a6]">
                 {data?.exam ? (

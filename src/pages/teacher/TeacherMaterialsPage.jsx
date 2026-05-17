@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import { AlertCircle, FileStack, FolderOpen, Menu, Plus, Search, UploadCloud, X } from "lucide-react"
+import { AlertCircle, FolderOpen, Menu, Plus, Search, UploadCloud, X } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import ConfirmDialog from "../../components/student/ConfirmDialog"
 import RenameDialog from "../../components/ui/RenameDialog"
@@ -10,6 +10,10 @@ import MaterialCard from "../../components/materials/MaterialCard"
 import MaterialPreviewModal from "../../components/materials/MaterialPreviewModal"
 import CategorySidebar from "../../components/materials/CategorySidebar"
 import TextStudio from "../../components/materials/TextStudio"
+import {
+  MATERIALS_WORKSPACE_PANEL_EMPTY,
+  MATERIALS_WORKSPACE_PANEL_PAD,
+} from "../../components/materials/materialsWorkspaceStyles"
 import CreateCategoryModal from "../../components/materials/CreateCategoryModal"
 import {
   createCategory,
@@ -27,7 +31,6 @@ import {
 const LIBRARY_TYPES = new Set(["pdf", "ppt"])
 
 const ALL_ID = CategorySidebar.ALL_ID
-const UNCAT_ID = CategorySidebar.UNCAT_ID
 
 export default function TeacherMaterialsPage() {
   const [searchParams] = useSearchParams()
@@ -133,10 +136,6 @@ export default function TeacherMaterialsPage() {
   )
 
   const totalCount = libraryMaterials.length
-  const uncategorizedCount = useMemo(
-    () => libraryMaterials.filter((m) => !m.category_id).length,
-    [libraryMaterials],
-  )
 
   const categoriesWithCounts = useMemo(() => {
     const counts = new Map()
@@ -153,8 +152,7 @@ export default function TeacherMaterialsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return libraryMaterials.filter((m) => {
-      if (activeId === UNCAT_ID && m.category_id) return false
-      if (activeId !== ALL_ID && activeId !== UNCAT_ID && m.category_id !== activeId) return false
+      if (activeId !== ALL_ID && m.category_id !== activeId) return false
       if (filter !== "all" && m.material_type !== filter) return false
       if (!q) return true
       return (
@@ -167,13 +165,13 @@ export default function TeacherMaterialsPage() {
   }, [libraryMaterials, activeId, filter, query])
 
   useEffect(() => {
-    if (activeId === ALL_ID || activeId === UNCAT_ID) {
-      console.log("🔍 Filtering materials by category:", activeId)
+    if (activeId === ALL_ID) {
+      console.log("[loading] Filtering materials by category:", activeId)
     } else {
       const c = categories.find((x) => x.id === activeId)
-      console.log("🔍 Filtering materials by category:", c?.title || activeId)
+      console.log("[loading] Filtering materials by category:", c?.title || activeId)
     }
-    console.log("✅ Materials filtered successfully:", filtered.length)
+    console.log("[success] Materials filtered successfully:", filtered.length)
   }, [activeId, filtered.length, categories])
 
   const onUploaded = useCallback(
@@ -187,11 +185,11 @@ export default function TeacherMaterialsPage() {
   const onSelectCategory = (id) => {
     setActiveId(id)
     setDrawerOpen(false)
-    if (id !== ALL_ID && id !== UNCAT_ID) setUploadCategoryId(id)
+    if (id !== ALL_ID) setUploadCategoryId(id)
   }
 
   const openUploadModal = useCallback(() => {
-    if (activeId !== ALL_ID && activeId !== UNCAT_ID) {
+    if (activeId !== ALL_ID) {
       setUploadCategoryId(activeId)
     } else {
       setUploadCategoryId(null)
@@ -307,9 +305,7 @@ export default function TeacherMaterialsPage() {
   const activeTitle =
     activeId === ALL_ID
       ? "All materials"
-      : activeId === UNCAT_ID
-        ? "Uncategorized"
-        : categoriesWithCounts.find((c) => c.id === activeId)?.title || "Materials"
+      : categoriesWithCounts.find((c) => c.id === activeId)?.title || "Materials"
 
   const sidebar = (
     <CategorySidebar
@@ -327,7 +323,6 @@ export default function TeacherMaterialsPage() {
       onDelete={setPendingDeleteCategory}
       loading={categoriesLoading}
       totalCount={totalCount}
-      uncategorizedCount={uncategorizedCount}
     />
   )
 
@@ -339,21 +334,20 @@ export default function TeacherMaterialsPage() {
   }, [loadCategories, loadMaterials])
 
   return (
-    <div className="min-w-0 max-w-full space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex items-center gap-3">
-          {workspaceTab === "files" ? (
+    <div className="min-w-0 max-w-full space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex items-start gap-3">
           <button
             type="button"
-            className="rounded-xl border border-[#e8ebf4] bg-white p-2 text-[#596286] lg:hidden"
+            className="mt-0.5 rounded-xl border border-[#e8ebf4] bg-white p-2 text-[#596286] lg:hidden"
             onClick={() => setDrawerOpen(true)}
             aria-label="Open subjects"
           >
             <Menu className="h-5 w-5" />
           </button>
-          ) : null}
           <div>
-            <p className="text-sm text-[#5d6580] sm:text-[15px]">
+            <h1 className="text-xl font-semibold text-[#151d3a] sm:text-2xl">Materials</h1>
+            <p className="mt-1 text-sm text-[#7d86a5]">
               Upload course content to power your AI exam generation.
             </p>
             <div className="mt-3 inline-flex rounded-xl border border-[#e7eaf3] bg-white p-1 shadow-sm">
@@ -369,11 +363,10 @@ export default function TeacherMaterialsPage() {
               <button
                 type="button"
                 onClick={() => setWorkspaceTab("text")}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:text-sm ${
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:text-sm ${
                   workspaceTab === "text" ? "bg-[#f1efff] text-[#5f4ce6]" : "text-[#596286] hover:bg-[#fafbff]"
                 }`}
               >
-                <FileStack className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 Course Notes
               </button>
             </div>
@@ -419,9 +412,6 @@ export default function TeacherMaterialsPage() {
               <div className="flex min-w-0 items-center gap-2">
                 <FolderOpen className="h-4 w-4 text-[#5f4ce6]" />
                 <h2 className="truncate text-sm font-semibold text-[#151d3a]">{activeTitle}</h2>
-                <span className="rounded-full bg-[#f1f3f8] px-2 text-[11px] font-semibold text-[#5d6580]">
-                  {filtered.length}
-                </span>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
                 <button
@@ -478,69 +468,41 @@ export default function TeacherMaterialsPage() {
             ) : null}
 
             {materialsLoading ? (
-              <SectionSkeleton rows={4} />
+              <div className={MATERIALS_WORKSPACE_PANEL_PAD}>
+                <SectionSkeleton rows={4} />
+              </div>
             ) : filtered.length === 0 ? (
-              <div className="grid place-items-center rounded-2xl border border-dashed border-[#dbe0ee] bg-white p-10 text-center">
+              <div className={MATERIALS_WORKSPACE_PANEL_EMPTY}>
                 <UploadCloud className="h-10 w-10 text-[#9aa3c2]" />
-                <p className="mt-3 text-sm font-semibold text-[#151d3a]">
+                <p className="mt-4 max-w-md text-base font-medium text-[#151d3a]">
+                  Your course files will appear here
+                </p>
+                <p className="mt-2 max-w-md text-sm leading-relaxed text-[#7d86a5]">
                   {activeId === ALL_ID
-                    ? "No materials yet"
-                    : `No materials in "${activeTitle}" yet`}
+                    ? "Select a subject from the left and upload your PDFs or PowerPoint slides using the Add Materials button above."
+                    : `Select this subject and upload your PDFs or PowerPoint slides using the Add Materials button above.`}
                 </p>
-                <p className="mt-1 text-xs text-[#7f88a6]">
-                  Upload PDFs or PowerPoint slides for your subject folders.
-                </p>
-                <button
-                  type="button"
-                  onClick={openUploadModal}
-                  className="mt-4 inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#5a56e2]"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add materials
-                </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {filtered.map((m) => (
-                  <MaterialCard
-                    key={m.id}
-                    material={m}
-                    onPreview={setPreview}
-                    onRename={onRename}
-                    onMove={onMove}
-                    onDelete={setPendingDeleteMaterial}
-                  />
-                ))}
+              <div className={MATERIALS_WORKSPACE_PANEL_PAD}>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {filtered.map((m) => (
+                    <MaterialCard
+                      key={m.id}
+                      material={m}
+                      onPreview={setPreview}
+                      onRename={onRename}
+                      onMove={onMove}
+                      onDelete={setPendingDeleteMaterial}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </section>
             </div>
           </div>
 
-          {drawerOpen ? (
-            <div className="fixed inset-0 z-50 lg:hidden" role="presentation">
-              <button
-                type="button"
-                aria-label="Close subjects"
-                onClick={() => setDrawerOpen(false)}
-                className="absolute inset-0 bg-[#0f1730]/40 backdrop-blur-[2px]"
-              />
-              <div className="absolute left-0 top-0 h-full w-[min(320px,88vw)] overflow-y-auto bg-[#f3f5fb] p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-[#151d3a]">Subjects</span>
-                  <button
-                    type="button"
-                    onClick={() => setDrawerOpen(false)}
-                    className="rounded-lg p-2 text-[#596286] hover:bg-white"
-                    aria-label="Close"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                {sidebar}
-              </div>
-            </div>
-          ) : null}
         </>
       ) : (
         <TextStudio
@@ -560,6 +522,31 @@ export default function TeacherMaterialsPage() {
           showToast={showToast}
         />
       )}
+
+      {drawerOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden" role="presentation">
+          <button
+            type="button"
+            aria-label="Close subjects"
+            onClick={() => setDrawerOpen(false)}
+            className="absolute inset-0 bg-[#0f1730]/40 backdrop-blur-[2px]"
+          />
+          <div className="absolute left-0 top-0 h-full w-[min(320px,88vw)] overflow-y-auto bg-[#f3f5fb] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-semibold text-[#151d3a]">Subjects</span>
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(false)}
+                className="rounded-lg p-2 text-[#596286] hover:bg-white"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {sidebar}
+          </div>
+        </div>
+      ) : null}
 
       <MaterialPreviewModal material={preview} onClose={() => setPreview(null)} />
 
@@ -652,7 +639,7 @@ export default function TeacherMaterialsPage() {
                 {pendingDeleteCategory.material_count > 0
                   ? `${pendingDeleteCategory.material_count} material${
                       pendingDeleteCategory.material_count === 1 ? "" : "s"
-                    } inside will become uncategorized — they aren't deleted.`
+                    } inside will become uncategorized - they aren't deleted.`
                   : "No materials are linked to this subject."}
               </p>
             </>

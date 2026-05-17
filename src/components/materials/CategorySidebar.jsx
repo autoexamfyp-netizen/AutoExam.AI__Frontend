@@ -1,4 +1,4 @@
-import { Folder, FolderPlus, Inbox, Layers, MoreVertical, Pencil, Trash2 } from "lucide-react"
+import { Folder, FolderPlus, Layers, MoreVertical, Pencil, Trash2 } from "lucide-react"
 import { useState } from "react"
 
 const ALL_ID = "__all__"
@@ -16,7 +16,6 @@ const UNCAT_ID = "__uncategorized__"
  * @param {(c: object) => void} [props.onDelete]
  * @param {boolean} [props.loading]
  * @param {number} [props.totalCount]
- * @param {number} [props.uncategorizedCount]
  */
 export default function CategorySidebar({
   categories,
@@ -27,7 +26,6 @@ export default function CategorySidebar({
   onDelete,
   loading = false,
   totalCount = 0,
-  uncategorizedCount = 0,
 }) {
   const [openMenuId, setOpenMenuId] = useState(null)
 
@@ -40,9 +38,10 @@ export default function CategorySidebar({
         <button
           type="button"
           onClick={onCreate}
-          className="inline-flex items-center gap-1 rounded-lg bg-[#6562f1] px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5a56e2]"
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5a56e2]"
         >
-          <FolderPlus className="h-3.5 w-3.5" /> New subject
+          <FolderPlus className="h-4 w-4" />
+          New subject
         </button>
       </div>
 
@@ -53,13 +52,6 @@ export default function CategorySidebar({
           count={totalCount}
           active={activeId === ALL_ID}
           onClick={() => onSelect(ALL_ID)}
-        />
-        <SidebarItem
-          icon={Inbox}
-          label="Uncategorized"
-          count={uncategorizedCount}
-          active={activeId === UNCAT_ID}
-          onClick={() => onSelect(UNCAT_ID)}
         />
 
         <div className="my-2 border-t border-[#eef1f7]" />

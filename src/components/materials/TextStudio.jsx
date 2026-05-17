@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowLeft, FolderOpen, Plus, Search, Sparkles } from "lucide-react"
+import { ArrowLeft, FolderOpen, Plus, Search, Sparkles, StickyNote } from "lucide-react"
 import ContentList, { displayNoteTitle } from "./ContentList"
+import SectionSkeleton from "../ui/SectionSkeleton"
+import {
+  MATERIALS_WORKSPACE_PANEL_EMPTY,
+  MATERIALS_WORKSPACE_PANEL_PAD,
+} from "./materialsWorkspaceStyles"
 import { sanitizeNoteContent, sanitizeNoteTitle } from "./noteUtils"
 import MoveMaterialDialog from "../ui/MoveMaterialDialog"
 import TextEditor from "./TextEditor"
@@ -17,7 +22,6 @@ import {
 } from "../../services/contentService"
 
 const ALL_ID = CategorySidebar.ALL_ID
-const UNCAT_ID = CategorySidebar.UNCAT_ID
 
 const AUTOSAVE_DELAY_MS = 4000
 
@@ -36,7 +40,7 @@ const DRAFT_DEFAULT = { id: null, title: "", content: "", categoryId: null }
  * @param {object} props
  * @param {object[]} props.categoriesWithCounts
  * @param {boolean} props.categoriesLoading
- * @param {string} props.activeNavId              Sidebar selection (ALL_ID | UNCAT_ID | category uuid)
+ * @param {string} props.activeNavId              Sidebar selection (ALL_ID | category uuid)
  * @param {(id: string) => void} props.onSelectNav
  * @param {() => void} props.onCreateCategory
  * @param {(c: object) => void} props.onEditCategory
@@ -86,7 +90,6 @@ export default function TextStudio({
       try {
         let rows
         if (activeNavId === ALL_ID) rows = await fetchTextMaterials({})
-        else if (activeNavId === UNCAT_ID) rows = await fetchTextMaterials({ uncategorizedOnly: true })
         else rows = await fetchTextMaterials({ categoryId: activeNavId })
         if (cancelled) return
         setItems(rows)
@@ -190,7 +193,7 @@ export default function TextStudio({
     setIsNewDraft(true)
     setTitle("")
     setContent("")
-    if (activeNavId !== ALL_ID && activeNavId !== UNCAT_ID) {
+    if (activeNavId !== ALL_ID) {
       setCategoryId(activeNavId)
     } else {
       setCategoryId(categoriesWithCounts[0]?.id ?? null)
@@ -305,7 +308,6 @@ export default function TextStudio({
   /* ----------------------- Per-row actions --------------------------------- */
   const noteLeavesFolder = useCallback((navId, row) => {
     if (navId === ALL_ID) return false
-    if (navId === UNCAT_ID) return row.category_id != null
     return row.category_id !== navId
   }, [])
 
@@ -424,11 +426,9 @@ export default function TextStudio({
   }, [categoriesWithCounts, textCountsByCategory])
 
   const totalTextCount = items.length
-  const uncatTextCount = textCountsByCategory.get("__uncat__") ?? 0
 
   const activeTitle = useMemo(() => {
     if (activeNavId === ALL_ID) return "All notes"
-    if (activeNavId === UNCAT_ID) return "Uncategorized"
     return categoriesWithCounts.find((c) => c.id === activeNavId)?.title || "Notes"
   }, [activeNavId, categoriesWithCounts])
 
@@ -448,17 +448,18 @@ export default function TextStudio({
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <CategorySidebar
-        categories={sidebarCategories}
-        activeId={activeNavId}
-        onSelect={onSelectNav}
-        onCreate={onCreateCategory}
-        onEdit={onEditCategory}
-        onDelete={onDeleteCategory}
-        loading={categoriesLoading}
-        totalCount={totalTextCount}
-        uncategorizedCount={uncatTextCount}
-      />
+      <div className="hidden lg:block">
+        <CategorySidebar
+          categories={sidebarCategories}
+          activeId={activeNavId}
+          onSelect={onSelectNav}
+          onCreate={onCreateCategory}
+          onEdit={onEditCategory}
+          onDelete={onDeleteCategory}
+          loading={categoriesLoading}
+          totalCount={totalTextCount}
+        />
+      </div>
 
       <div className="min-w-0 space-y-4">
         {!editorOpen ? (
@@ -467,9 +468,6 @@ export default function TextStudio({
               <div className="flex min-w-0 items-center gap-2">
                 <FolderOpen className="h-4 w-4 text-[#5f4ce6]" />
                 <h2 className="truncate text-sm font-semibold text-[#151d3a]">{activeTitle}</h2>
-                <span className="rounded-full bg-[#f1f3f8] px-2 text-[11px] font-semibold text-[#5d6580]">
-                  {filteredItems.length}
-                </span>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
                 <button
@@ -493,26 +491,45 @@ export default function TextStudio({
               </div>
             </div>
 
-            <ContentList
-              fillHeight
-              showHeader={false}
-              emptyHint={
-                !listLoading && items.length > 0 && filteredItems.length === 0
-                  ? "No notes match your search."
-                  : 'No notes yet. Click "+ Add Notes" to paste your first set of course notes.'
-              }
-              loading={listLoading}
-              items={filteredItems}
-              selectedId={draftId}
-              questionCounts={questionCounts}
-              onPreview={handleSelectRow}
-              onEdit={handleEditRow}
-              onNew={handleNew}
-              onMove={handleMoveNote}
-              onDuplicate={handleDuplicate}
-              onExport={handleExportNote}
-              onDelete={setPendingDelete}
-            />
+            {listLoading ? (
+              <div className={MATERIALS_WORKSPACE_PANEL_PAD}>
+                <SectionSkeleton rows={4} />
+              </div>
+            ) : !listLoading && items.length === 0 ? (
+              <div className={MATERIALS_WORKSPACE_PANEL_EMPTY}>
+                <StickyNote className="h-10 w-10 text-[#9aa3c2]" />
+                <p className="mt-4 max-w-md text-base font-medium text-[#151d3a]">
+                  Your course notes will appear here
+                </p>
+                <p className="mt-2 max-w-md text-sm leading-relaxed text-[#7d86a5]">
+                  Add lecture notes or chapter text above and use them to generate exam questions instantly.
+                </p>
+              </div>
+            ) : (
+              <div className={MATERIALS_WORKSPACE_PANEL_PAD}>
+                <ContentList
+                  embedded
+                  fillHeight
+                  showHeader={false}
+                  emptyHint={
+                    filteredItems.length === 0
+                      ? "Nothing matched your search. Try different keywords or clear the search box."
+                      : ""
+                  }
+                  loading={false}
+                  items={filteredItems}
+                  selectedId={draftId}
+                  questionCounts={questionCounts}
+                  onPreview={handleSelectRow}
+                  onEdit={handleEditRow}
+                  onNew={handleNew}
+                  onMove={handleMoveNote}
+                  onDuplicate={handleDuplicate}
+                  onExport={handleExportNote}
+                  onDelete={setPendingDelete}
+                />
+              </div>
+            )}
           </section>
         ) : (
           <>
@@ -549,7 +566,7 @@ export default function TextStudio({
                 className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#cfc8ff] bg-[#f4f3ff] px-4 py-3 text-sm font-semibold text-[#5f4ce6] transition hover:bg-[#ebe8ff]"
               >
                 <Sparkles className="h-4 w-4 shrink-0" />
-                ⚡ Use this note to generate an exam →
+                    Use this note to generate an exam
               </Link>
             ) : null}
           </>
@@ -607,4 +624,4 @@ export default function TextStudio({
 }
 
 TextStudio.ALL_ID = ALL_ID
-TextStudio.UNCAT_ID = UNCAT_ID
+TextStudio.UNCAT_ID = CategorySidebar.UNCAT_ID

@@ -233,7 +233,7 @@ export default function SignupPage() {
               <PasswordStrengthChecklist
                 password={formData.password}
                 confirmPassword={formData.confirmPassword}
-                showMatch
+                matchOnly
               />
             ) : null}
 

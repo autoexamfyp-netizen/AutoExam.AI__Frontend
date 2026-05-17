@@ -3,6 +3,7 @@ import { MessageSquareText, Sparkles, Target, ThumbsDown, ThumbsUp, TriangleAler
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import { fetchStudentDashboard } from "../../services/dashboardService"
 import { fetchSubmissionDetail } from "../../services/teacherSubmissionService"
+import { displayExamTitle } from "../../utils/examTitle"
 
 function formatReportDate(value) {
   try {
@@ -69,7 +70,7 @@ function buildFeedbackFromSubmission(examEntry, detail) {
           : `${topic.name} is your strongest area at ${topic.scorePercent}% across ${topic.count} answer${topic.count === 1 ? "" : "s"}.`
       })
     : [
-        `You scored ${percentage}% overall on ${examEntry.published?.title || "this exam"}.`,
+        `You scored ${percentage}% overall on ${displayExamTitle(examEntry.published?.title) || "this exam"}.`,
       ]
 
   const weaknesses = weakest.length
@@ -110,7 +111,7 @@ function buildFeedbackFromSubmission(examEntry, detail) {
   })()
 
   return {
-    examTitle: examEntry.published?.title || "Untitled exam",
+    examTitle: displayExamTitle(examEntry.published?.title),
     generatedAt: submission.submitted_at || submission.updated_at || examEntry.published?.end_time,
     topics,
     strengths,

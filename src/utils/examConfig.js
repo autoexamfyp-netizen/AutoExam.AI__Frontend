@@ -49,7 +49,7 @@ export function validateTargetTotalMarks(val) {
 export function validateTitle(val) {
   const t = String(val ?? "")
   const trimmed = t.trim()
-  if (!trimmed) return { valid: false, error: "Please enter a title for this exam" }
+  if (!trimmed) return { valid: false, error: "Please give this exam a title." }
   if (trimmed.length < 3) return { valid: false, error: "Title must be at least 3 characters" }
   if (t.length > 80) return { valid: false, error: "Title cannot exceed 80 characters" }
   return { valid: true, error: null }
@@ -60,7 +60,7 @@ export function validateDuration(val) {
   if (!trimmed) return { valid: false, error: "Please set a duration for this exam" }
   const n = Number(trimmed)
   if (!Number.isFinite(n) || n < 10) {
-    return { valid: false, error: "Minimum exam duration is 10 minutes" }
+    return { valid: false, error: "Exam duration must be at least 10 minutes." }
   }
   if (n > 180) return { valid: false, error: "Duration cannot exceed 3 hours (180 min)" }
   return { valid: true, value: n, error: null }
@@ -76,8 +76,15 @@ export function validateQuestionCount(val, max, maxMessage) {
   return { valid: true, error: null, value: n }
 }
 
-export function validateMarksForCount(val, count, maxMarks, zeroMessage) {
+export function marksEmptyErrorForType(type) {
+  if (type === "mcq") return "Marks per MCQ cannot be empty when you have questions of that type."
+  if (type === "essay") return "Marks per Essay cannot be empty when you have questions of that type."
+  return "Marks per Short cannot be empty when you have questions of that type."
+}
+
+export function validateMarksForCount(val, count, maxMarks, typeLabel) {
   if (count === 0) return { valid: true, error: null, disabled: true }
+  const zeroMessage = marksEmptyErrorForType(typeLabel)
   const trimmed = String(val ?? "").trim()
   if (!trimmed || Number(trimmed) === 0) {
     return { valid: false, error: zeroMessage, disabled: false }
@@ -144,19 +151,60 @@ export function validateExamConfig(cfg) {
   const shortN = shortCount.value ?? 0
   const essayN = essayCount.value ?? 0
   const hasAnyQuestion = mcqN + shortN + essayN > 0
-  const marksMcq = validateMarksForCount(cfg.marksMcq, mcqN, 20, "MCQ marks cannot be zero")
-  const marksShort = validateMarksForCount(cfg.marksShort, shortN, 20, "Short answer marks cannot be zero")
-  const marksEssay = validateMarksForCount(cfg.marksEssay, essayN, 50, "Essay marks cannot be zero")
+  const marksMcq = validateMarksForCount(cfg.marksMcq, mcqN, 20, "mcq")
+  const marksShort = validateMarksForCount(cfg.marksShort, shortN, 20, "short")
+  const marksEssay = validateMarksForCount(cfg.marksEssay, essayN, 50, "essay")
   const totals = computeExamTotals(cfg)
 
   let allocation = null
   if (target.valid && hasAnyQuestion) {
     const current = computePartialMarks(cfg)
     const diff = target.value - current
-    if (diff > 0) allocation = { type: "remaining", amount: diff }
-    else if (diff === 0) allocation = { type: "balanced" }
-    else allocation = { type: "over", amount: -diff, target: target.value }
+    if (diff > 0) {
+      allocation = {
+        type: "remaining",
+        amount: diff,
+        current,
+        target: target.value,
+        message: `Your current breakdown totals ${current} marks. You still have ${diff} marks left to allocate.`,
+      }
+    } else if (diff === 0) {
+      allocation = { type: "balanced", current, target: target.value }
+    } else {
+      allocation = {
+        type: "over",
+        amount: -diff,
+        current,
+        target: target.value,
+        message: `Your current breakdown totals ${current} marks which is over your target of ${target.value} marks.`,
+      }
+    }
   }
+
+  const marksBalanced = !target.valid || !hasAnyQuestion || allocation?.type === "balanced"
+
+  const blockingErrors = []
+  if (!title.valid && title.error) blockingErrors.push(title.error)
+  if (!duration.valid && duration.error) blockingErrors.push(duration.error)
+  if (!hasAnyQuestion) {
+    blockingErrors.push("Add at least one question type before generating.")
+  }
+  if (!marksMcq.valid && marksMcq.error) blockingErrors.push(marksMcq.error)
+  if (!marksShort.valid && marksShort.error) blockingErrors.push(marksShort.error)
+  if (!marksEssay.valid && marksEssay.error) blockingErrors.push(marksEssay.error)
+  if (target.valid && hasAnyQuestion && totals.ready && !marksBalanced && allocation) {
+    if (allocation.type === "over") blockingErrors.push(allocation.message)
+    else if (allocation.type === "remaining") blockingErrors.push(allocation.message)
+    else {
+      blockingErrors.push(
+        "Your question marks do not add up to your total. Adjust your question counts or marks per question to match.",
+      )
+    }
+  }
+  if (!target.valid && target.error) blockingErrors.push(target.error)
+  if (!mcqCount.valid && mcqCount.error) blockingErrors.push(mcqCount.error)
+  if (!shortCount.valid && shortCount.error) blockingErrors.push(shortCount.error)
+  if (!essayCount.valid && essayCount.error) blockingErrors.push(essayCount.error)
 
   const allValid =
     target.valid &&
@@ -169,7 +217,8 @@ export function validateExamConfig(cfg) {
     marksShort.valid &&
     marksEssay.valid &&
     hasAnyQuestion &&
-    totals.ready
+    totals.ready &&
+    marksBalanced
 
   return {
     target,
@@ -183,9 +232,51 @@ export function validateExamConfig(cfg) {
     marksEssay,
     hasAnyQuestion,
     allValid,
+    marksBalanced,
     allocation,
     totals,
-    globalError: hasAnyQuestion ? null : "Add at least one question type to generate an exam",
+    blockingErrors,
+    globalError: hasAnyQuestion ? null : "Add at least one question type before generating.",
+  }
+}
+
+/** Breakdown for post-generation summary from teacher config (not AI output). */
+export function computeBreakdownFromConfig(cfg) {
+  const mcq = getCountValue(cfg.targetMcq)
+  const short = getCountValue(cfg.targetShort)
+  const essay = getCountValue(cfg.targetEssay)
+  const marksMcq = parseCfgMarks(cfg.marksMcq) ?? 0
+  const marksShort = parseCfgMarks(cfg.marksShort) ?? 0
+  const marksEssay = parseCfgMarks(cfg.marksEssay) ?? 0
+  return {
+    mcq: { count: mcq, marksEach: marksMcq, subtotal: mcq * marksMcq },
+    short: { count: short, marksEach: marksShort, subtotal: short * marksShort },
+    essay: { count: essay, marksEach: marksEssay, subtotal: essay * marksEssay },
+    totalQuestions: mcq + short + essay,
+    totalMarks: mcq * marksMcq + short * marksShort + essay * marksEssay,
+  }
+}
+
+export function difficultyLabelFromCfg(cfg) {
+  const d = cfg?.difficulty || "mixed"
+  if (d === "mixed") return "Mixed"
+  return d.charAt(0).toUpperCase() + d.slice(1)
+}
+
+/** Snapshot cfg fields used for generation display. */
+export function snapshotGenerationConfig(cfg) {
+  const duration = validateDuration(cfg.durationMinutes)
+  return {
+    title: cfg.title.trim(),
+    durationMinutes: duration.valid ? duration.value : parseCfgCount(cfg.durationMinutes) || 60,
+    difficulty: cfg.difficulty || "mixed",
+    targetMcq: String(cfg.targetMcq ?? ""),
+    targetShort: String(cfg.targetShort ?? ""),
+    targetEssay: String(cfg.targetEssay ?? ""),
+    marksMcq: String(cfg.marksMcq ?? ""),
+    marksShort: String(cfg.marksShort ?? ""),
+    marksEssay: String(cfg.marksEssay ?? ""),
+    targetTotalMarks: String(cfg.targetTotalMarks ?? ""),
   }
 }
 

@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef } from "react"
 
-const CELL =
-  "flex h-11 w-9 min-w-0 items-center justify-center rounded-lg border border-[#e3e6ef] bg-white text-center text-base font-semibold text-[#1b1f36] shadow-sm outline-none transition-colors duration-150 focus-visible:border-[#6562f1] focus-visible:ring-2 focus-visible:ring-[#6562f1]/25 sm:h-12 sm:w-10 sm:text-lg"
-
 /**
  * Segmented OTP input: auto-advance, backspace, paste. Controlled `value` is digits-only string.
  */
@@ -84,31 +81,45 @@ export default function OtpInput({
 
   return (
     <div
-      className={`flex flex-wrap justify-center gap-2 sm:gap-2.5 ${className}`}
+      className={`rounded-2xl border border-[#e7eaf3] bg-[#fafbff] px-4 py-5 sm:px-6 ${invalid ? "border-red-200 bg-red-50/40" : ""} ${className}`}
       role="group"
-      aria-label="One-time code"
+      aria-label="One-time verification code"
       onPaste={handlePaste}
     >
-      {Array.from({ length }).map((_, i) => (
-        <input
-          key={`${idPrefix}-${i}`}
-          id={`${idPrefix}-${i}`}
-          ref={(el) => {
-            refs.current[i] = el
-          }}
-          type="text"
-          inputMode="numeric"
-          autoComplete={i === 0 ? "one-time-code" : "off"}
-          maxLength={1}
-          disabled={disabled}
-          value={charAt(i)}
-          onChange={(e) => handleChange(i, e.target.value)}
-          onKeyDown={(e) => handleKeyDown(i, e)}
-          onFocus={(e) => e.target.select()}
-          className={`${CELL} ${invalid ? "border-red-300 ring-1 ring-red-200" : ""} disabled:cursor-not-allowed disabled:opacity-50`}
-          aria-invalid={invalid || undefined}
-        />
-      ))}
+      <div className="flex justify-center gap-2 sm:gap-2.5">
+        {Array.from({ length }).map((_, i) => {
+          const filled = Boolean(charAt(i))
+          return (
+            <input
+              key={`${idPrefix}-${i}`}
+              id={`${idPrefix}-${i}`}
+              ref={(el) => {
+                refs.current[i] = el
+              }}
+              type="text"
+              inputMode="numeric"
+              autoComplete={i === 0 ? "one-time-code" : "off"}
+              maxLength={1}
+              disabled={disabled}
+              value={charAt(i)}
+              onChange={(e) => handleChange(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
+              onFocus={(e) => e.target.select()}
+              className={[
+                "h-12 w-10 rounded-xl border bg-white text-center text-lg font-semibold tracking-wide text-[#151d3a] shadow-sm outline-none transition-all duration-150 sm:h-14 sm:w-11 sm:text-xl",
+                invalid
+                  ? "border-red-300 ring-2 ring-red-100"
+                  : filled
+                    ? "border-[#6562f1] ring-2 ring-[#6562f1]/15"
+                    : "border-[#e3e6ef] focus-visible:border-[#6562f1] focus-visible:ring-2 focus-visible:ring-[#6562f1]/20",
+                disabled ? "cursor-not-allowed opacity-50" : "",
+              ].join(" ")}
+              aria-invalid={invalid || undefined}
+              aria-label={`Digit ${i + 1} of ${length}`}
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }

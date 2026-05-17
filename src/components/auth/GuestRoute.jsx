@@ -7,14 +7,14 @@ import FullPageLoader from "../ui/FullPageLoader"
  * Redirect authenticated users away from login/signup/forgot-password.
  */
 export default function GuestRoute({ children }) {
-  const { user, session, loading, initialized } = useAuth()
+  const { user, session, loading, initialized, loginFlowActive, recoveryFlowActive } = useAuth()
   const location = useLocation()
 
   if (!initialized || loading) {
     return <FullPageLoader title="Loading…" subtitle="Preparing your session…" />
   }
 
-  if (session && user) {
+  if (session && user && !loginFlowActive && !recoveryFlowActive) {
     if (!isEmailVerified(user)) {
       return (
         <Navigate

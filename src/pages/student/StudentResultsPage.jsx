@@ -6,6 +6,7 @@ import { Award, CheckCircle2, XCircle } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import { fetchStudentDashboard } from "../../services/dashboardService"
 import { fetchSubmissionDetail } from "../../services/teacherSubmissionService"
+import { displayExamTitle } from "../../utils/examTitle"
 
 function formatAttemptedAt(value) {
   try {
@@ -50,7 +51,7 @@ function toResultCard(examEntry, detail) {
 
   return {
     id: submission.id || examEntry.published?.id,
-    examTitle: examEntry.published?.title || "Untitled exam",
+    examTitle: displayExamTitle(examEntry.published?.title),
     attemptedAt: submission.submitted_at || submission.updated_at || examEntry.published?.end_time,
     totalScore,
     maxScore,
@@ -90,7 +91,7 @@ export default function StudentResultsPage() {
             try {
               return await fetchSubmissionDetail(submissionId)
             } catch (detailError) {
-              console.warn("⚠️ Could not load submission detail:", detailError?.message)
+              console.warn("[warning] Could not load submission detail:", detailError?.message)
               return null
             }
           }),

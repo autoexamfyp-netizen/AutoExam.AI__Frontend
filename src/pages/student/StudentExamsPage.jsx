@@ -5,6 +5,7 @@ import StatusBadge from "../../components/student/StatusBadge"
 import EmptyState from "../../components/student/EmptyState"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import { fetchStudentExamsCatalog } from "../../services/studentExamService"
+import { displayExamTitle } from "../../utils/examTitle"
 
 const TABS = [
   { id: "all", label: "All" },
@@ -24,7 +25,7 @@ function fmt(iso) {
 function ExamRowCard({ row }) {
   const p = row.published
   const publishedId = p.id
-  const title = p.title
+  const title = displayExamTitle(p.title)
   const subj = p.category?.title || "Subject"
   const deadline = p.end_time
   const duration = p.duration_minutes
@@ -161,7 +162,7 @@ export default function StudentExamsPage() {
     } catch (e) {
       setError(
         e?.message?.includes("Failed to fetch")
-          ? "Cannot reach the API — is the backend running on port 4000?"
+          ? "Unable to connect. Please try again."
           : e?.message || "Could not load exams.",
       )
     } finally {

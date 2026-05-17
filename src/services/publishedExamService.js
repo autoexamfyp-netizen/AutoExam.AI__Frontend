@@ -18,7 +18,7 @@ export async function fetchPublishedSubmissionCounts() {
 }
 
 export async function publishExam(payload) {
-  console.log("📄 Publishing exam...")
+  console.log("[folder] Publishing exam...")
   const out = await apiPost("/api/published-exams", payload)
   console.log("✅ Exam published successfully:", out?.published?.id)
   return out?.published

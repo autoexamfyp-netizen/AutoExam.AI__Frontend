@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import {
   AlertCircle,
-  CheckCircle2,
+  Check,
   ChevronDown,
   Clock,
   Cpu,
   FileText,
   Library,
-  ListChecks,
   Loader2,
   Pencil,
   Plus,
@@ -19,6 +18,7 @@ import {
   X,
 } from "lucide-react"
 import ConfirmDialog from "../../components/student/ConfirmDialog"
+import { useTeacherHeader } from "../../components/teacher/TeacherLayout"
 import PublishExamModal from "../../components/exam/PublishExamModal"
 import { fetchCategories } from "../../services/categoryService"
 import { fetchQuestionCountsByText, fetchTextMaterials } from "../../services/contentService"
@@ -26,12 +26,12 @@ import {
   createQuestion,
   deleteQuestion,
   fetchQuestionBank,
-  generateQuestionsFromText,
+  saveQuestionsToBank,
   updateQuestion,
 } from "../../services/questionService"
 import {
   createExam,
-  fetchExams,
+  deleteExam,
   generateExam,
   linkQuestionToExam,
   unlinkQuestionFromExam,
@@ -43,18 +43,21 @@ import ManualQuestionModal, {
   buildQuestionPayloadFromManualForm,
   emptyManualQuestionForm,
 } from "../../components/questions/ManualQuestionModal"
-import { displayNoteTitle, isBrokenExamTitle } from "../../components/materials/noteUtils"
+import { displayNoteTitle } from "../../components/materials/noteUtils"
 import {
+  computeBreakdownFromConfig,
   computeExamTotals,
+  difficultyLabelFromCfg,
   digitsOnly,
   getCountValue,
   parseCfgCount,
   parseCfgMarks,
+  snapshotGenerationConfig,
   validateDuration,
   validateExamConfig,
   validateTitle,
 } from "../../utils/examConfig"
-import { buildExamTitleFromNote, sanitizeExamTitleInput } from "../../utils/examTitle"
+import { buildExamTitleFromNote, displayExamTitle, sanitizeExamTitleInput } from "../../utils/examTitle"
 import { mcqFieldsFromQuestion } from "../../utils/mcqOptions"
 
 const DEFAULTS = {
@@ -121,11 +124,55 @@ function computeQuestionBreakdown(questions) {
   return out
 }
 
+/** Only explicit true counts as saved to the reusable bank (undefined/null = exam-only). */
+function isQuestionInBank(q) {
+  return q?.in_bank === true
+}
+
 function mcqCorrectLetter(options, modelAnswer) {
   if (!Array.isArray(options) || !options.length || !modelAnswer) return null
   const idx = options.findIndex((o) => o.trim().toLowerCase() === String(modelAnswer).trim().toLowerCase())
   if (idx < 0) return null
   return String.fromCharCode(65 + idx)
+}
+
+const TOAST_DURATION_MS = 4000
+
+function SuccessToast({ text, onDone, durationMs = TOAST_DURATION_MS }) {
+  const [entered, setEntered] = useState(false)
+  const [barWidth, setBarWidth] = useState(100)
+
+  useEffect(() => {
+    const enterId = requestAnimationFrame(() => setEntered(true))
+    const shrinkId = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setBarWidth(0))
+    })
+    const doneId = window.setTimeout(() => onDone?.(), durationMs)
+    return () => {
+      cancelAnimationFrame(enterId)
+      cancelAnimationFrame(shrinkId)
+      window.clearTimeout(doneId)
+    }
+  }, [durationMs, onDone])
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={classNames(
+        "fixed left-4 right-4 top-20 z-[130] overflow-hidden rounded-xl border border-[#cdebd9] bg-[#e8fbf3] shadow-lg transition-all duration-300 ease-out sm:left-auto sm:right-6 sm:max-w-md",
+        entered ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0",
+      )}
+    >
+      <p className="px-4 py-3 text-sm font-medium text-[#1f9d67]">{text}</p>
+      <div className="h-1 bg-[#cdebd9]">
+        <div
+          className="h-full bg-[#1f9d67] transition-[width] ease-linear"
+          style={{ width: `${barWidth}%`, transitionDuration: `${durationMs}ms` }}
+        />
+      </div>
+    </div>
+  )
 }
 
 export default function TeacherGenerateExamPage() {
@@ -145,6 +192,8 @@ export default function TeacherGenerateExamPage() {
   const [prefillFromTitle, setPrefillFromTitle] = useState("")
   const [mode, setMode] = useState(MODE.SAVED)
   const [cfg, setCfg] = useState(() => ({ ...DEFAULTS }))
+  const [generationCfgSnapshot, setGenerationCfgSnapshot] = useState(null)
+  const [configSubmitAttempted, setConfigSubmitAttempted] = useState(false)
 
   // Saved-content sidebar state
   const [categories, setCategories] = useState([])
@@ -161,21 +210,23 @@ export default function TeacherGenerateExamPage() {
 
   // Action state
   const [generating, setGenerating] = useState(false)
-  const [savingQuestions, setSavingQuestions] = useState(false)
+  const [savingToBank, setSavingToBank] = useState(false)
   const [error, setError] = useState("")
-  const [infoNotice, setInfoNotice] = useState("")
+  const [toast, setToast] = useState(null)
   const [last, setLast] = useState(null) // { exam, questions }
   const [manualModal, setManualModal] = useState(null)
   const [manualForm, setManualForm] = useState(null)
   const [manualSaving, setManualSaving] = useState(false)
-  const [previousExams, setPreviousExams] = useState([])
-  const [previousLoading, setPreviousLoading] = useState(false)
-  const [genSuccessBanner, setGenSuccessBanner] = useState("")
   const [centerFadeIn, setCenterFadeIn] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [examSettingsForm, setExamSettingsForm] = useState({ title: "", duration_minutes: 60, description: "" })
   const [examSettingsSaving, setExamSettingsSaving] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false)
+  const [publishPreparing, setPublishPreparing] = useState(false)
+  const [backConfirmOpen, setBackConfirmOpen] = useState(false)
+  const [backActionBusy, setBackActionBusy] = useState(false)
+  const { setHeaderBreadcrumb } = useTeacherHeader() || {}
   const [draftSaving, setDraftSaving] = useState(false)
   const [deleteQuestionTarget, setDeleteQuestionTarget] = useState(null)
   const [deletingQuestion, setDeletingQuestion] = useState(false)
@@ -186,35 +237,30 @@ export default function TeacherGenerateExamPage() {
 
   const inPostGeneration = Boolean(last?.exam)
 
+  const showToast = useCallback((text) => {
+    setToast({ key: Date.now(), text })
+  }, [])
+
+  useEffect(() => {
+    if (!setHeaderBreadcrumb) return undefined
+    if (inPostGeneration) {
+      setHeaderBreadcrumb(["Generate Exam", "Review Exam"])
+    } else {
+      setHeaderBreadcrumb(null)
+    }
+    return () => setHeaderBreadcrumb(null)
+  }, [inPostGeneration, setHeaderBreadcrumb])
+
   // ---------- LOAD: categories + content list ----------
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        console.log("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â¡ Loading existing educational content...")
+        console.log("[loading] Loading existing educational content...")
         const cats = await fetchCategories()
         if (!cancelled) setCategories(cats)
       } catch (e) {
-        console.warn("ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Categories fetch failed:", e?.message)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setPreviousLoading(true)
-      try {
-        console.log("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾ Loading previously generated exams...")
-        const rows = await fetchExams({ limit: 8 })
-        if (!cancelled) setPreviousExams(rows)
-      } catch (e) {
-        console.warn("ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Previous exams fetch failed:", e?.message)
-      } finally {
-        if (!cancelled) setPreviousLoading(false)
+        console.warn("[warning] Categories fetch failed:", e?.message)
       }
     })()
     return () => {
@@ -228,17 +274,16 @@ export default function TeacherGenerateExamPage() {
       setContentLoading(true)
       try {
         const opts = {}
-        if (activeCategoryId === ContentPicker.UNCAT_ID) opts.uncategorizedOnly = true
-        else if (activeCategoryId !== ContentPicker.ALL_ID) opts.categoryId = activeCategoryId
+        if (activeCategoryId !== ContentPicker.ALL_ID) opts.categoryId = activeCategoryId
         const list = await fetchTextMaterials(opts)
         if (cancelled) return
         setMaterials(list)
         const counts = await fetchQuestionCountsByText(list.map((m) => m.id))
         if (!cancelled) setQuestionCounts(counts)
-        console.log("Ã¢Å“â€¦ Content loaded successfully", { count: list.length })
+        console.log("[success] Content loaded successfully", { count: list.length })
       } catch (e) {
         if (!cancelled) {
-          console.warn("ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Content fetch failed:", e?.message)
+          console.warn("[warning] Content fetch failed:", e?.message)
           setMaterials([])
         }
       } finally {
@@ -282,17 +327,47 @@ export default function TeacherGenerateExamPage() {
     return false
   }, [mode, configValidation.allValid, cfg.title, activeMaterial, picked.size])
 
-  const visiblePreviousExams = useMemo(
-    () => previousExams.filter((e) => !isBrokenExamTitle(e.title)),
-    [previousExams],
-  )
-
   const postGenQuestions = last?.questions ?? []
-  const postGenBreakdown = useMemo(() => computeQuestionBreakdown(postGenQuestions), [postGenQuestions])
-  const postGenDifficultyLabel = useMemo(() => {
-    const d = last?.exam?.difficulty || "mixed"
-    return d === "mixed" ? "Mixed" : capitalize(d)
-  }, [last?.exam?.difficulty])
+  const postGenBreakdown = useMemo(
+    () => (generationCfgSnapshot ? computeBreakdownFromConfig(generationCfgSnapshot) : computeQuestionBreakdown(postGenQuestions)),
+    [generationCfgSnapshot, postGenQuestions],
+  )
+  const postGenDifficultyLabel = useMemo(
+    () => (generationCfgSnapshot ? difficultyLabelFromCfg(generationCfgSnapshot) : capitalize(last?.exam?.difficulty || "mixed")),
+    [generationCfgSnapshot, last?.exam?.difficulty],
+  )
+  const postGenDisplayTitle = generationCfgSnapshot?.title || last?.exam?.title
+  const postGenDurationMinutes = generationCfgSnapshot?.durationMinutes ?? last?.exam?.duration_minutes ?? 60
+
+  const postGenMarksStatus = useMemo(() => {
+    if (!last?.exam) return null
+    const targetMarks = parseCfgCount(generationCfgSnapshot?.targetTotalMarks)
+    if (targetMarks == null || targetMarks <= 0) return null
+    const currentMarks = postGenQuestions.reduce((s, q) => s + (Number(q.marks) || 0), 0)
+    const diff = currentMarks - targetMarks
+    if (diff === 0) {
+      return {
+        target: targetMarks,
+        current: currentMarks,
+        message: "Paper is balanced",
+        tone: "balanced",
+      }
+    }
+    if (diff < 0) {
+      return {
+        target: targetMarks,
+        current: currentMarks,
+        message: `${Math.abs(diff)} marks short of target`,
+        tone: "warn",
+      }
+    }
+    return {
+      target: targetMarks,
+      current: currentMarks,
+      message: `${diff} marks over target`,
+      tone: "warn",
+    }
+  }, [last?.exam, generationCfgSnapshot?.targetTotalMarks, postGenQuestions])
 
   const sourceSummary = useMemo(() => {
     if (mode === MODE.BANK) {
@@ -321,10 +396,6 @@ export default function TeacherGenerateExamPage() {
     }
     if (last.exam.id === lastGeneratedExamIdRef.current) return
     lastGeneratedExamIdRef.current = last.exam.id
-    const n = last.questions?.length || last.exam.total_questions || 0
-    setGenSuccessBanner(
-      `Ã¢Å“â€œ Exam generated Ã¢â‚¬â€ ${n} question${n === 1 ? "" : "s"} ready for review`,
-    )
     setExamSettingsForm({
       title: last.exam.title || "",
       duration_minutes: last.exam.duration_minutes || cfgDurationMinutes(cfg),
@@ -333,8 +404,6 @@ export default function TeacherGenerateExamPage() {
     setSettingsOpen(false)
     setInlineEditId(null)
     window.scrollTo({ top: 0, behavior: "smooth" })
-    const dismiss = setTimeout(() => setGenSuccessBanner(""), 3000)
-    return () => clearTimeout(dismiss)
   }, [last?.exam?.id])
 
   useEffect(() => {
@@ -367,9 +436,7 @@ export default function TeacherGenerateExamPage() {
     setActiveMaterial(m)
     const label = displayNoteTitle(m) || m.title?.trim() || "Untitled note"
     console.log("Selected source content:", label)
-    if (!cfg.title.trim()) {
-      setCfg((c) => ({ ...c, title: buildExamTitleFromNote(label) }))
-    }
+    setCfg((c) => ({ ...c, title: buildExamTitleFromNote(label) }))
   }
 
   useEffect(() => {
@@ -419,14 +486,12 @@ export default function TeacherGenerateExamPage() {
 
   const openAddManualQuestion = (categoryId = "") => {
     setError("")
-    setInfoNotice("")
     setManualModal({ mode: "add", linkToExam: Boolean(last?.exam) })
     setManualForm(emptyManualQuestionForm(categoryId || defaultManualCategoryId))
   }
 
   const openEditGeneratedQuestion = (q) => {
     setError("")
-    setInfoNotice("")
     setManualModal({ mode: "edit", question: q })
     setManualForm(manualFormFromQuestion(q))
   }
@@ -461,6 +526,7 @@ export default function TeacherGenerateExamPage() {
         const row = await createQuestion({
           ...payload,
           ai_generated: false,
+          in_bank: !last?.exam,
           text_material_id:
             mode === MODE.SAVED && activeMaterial?.id ? activeMaterial.id : null,
         })
@@ -474,15 +540,9 @@ export default function TeacherGenerateExamPage() {
             exam: { ...prev.exam, ...updatedExam, ...patch },
             questions: nextQuestions,
           }))
-          setInfoNotice("Question added to this exam.")
         } else if (mode === MODE.BANK) {
           setBank((curr) => [row, ...curr])
           setPicked((prev) => new Set([...prev, row.id]))
-          setInfoNotice("Ã¢Å“â€œ Question added and selected")
-        } else {
-          setInfoNotice(
-            'Saved to your question bank. Open Generate Exam → "From existing questions" to include them in a paper.',
-          )
         }
         resetManualModal()
       } else {
@@ -497,7 +557,6 @@ export default function TeacherGenerateExamPage() {
         if (mode === MODE.BANK) {
           setBank((curr) => curr.map((x) => (x.id === row.id ? row : x)))
         }
-        setInfoNotice("Question updated.")
         resetManualModal()
       }
     } catch (err) {
@@ -509,11 +568,27 @@ export default function TeacherGenerateExamPage() {
 
   const onChangePostGenContent = () => {
     setLast(null)
+    setGenerationCfgSnapshot(null)
     setSettingsOpen(false)
     setInlineEditId(null)
     setInlineEditForm(null)
     setDeleteQuestionTarget(null)
-    setGenSuccessBanner("")
+    lastGeneratedExamIdRef.current = null
+  }
+
+  const onDiscardExamAndLeaveReview = async () => {
+    if (!last?.exam?.id || backActionBusy) return
+    setBackActionBusy(true)
+    setError("")
+    try {
+      await deleteExam(last.exam.id)
+      setBackConfirmOpen(false)
+      onChangePostGenContent()
+    } catch (e) {
+      setError(e?.message || "Could not discard this exam.")
+    } finally {
+      setBackActionBusy(false)
+    }
   }
 
   const onSaveExamSettings = async () => {
@@ -537,7 +612,6 @@ export default function TeacherGenerateExamPage() {
         durationMinutes: String(updated.duration_minutes ?? c.durationMinutes),
       }))
       setSettingsOpen(false)
-      setInfoNotice("Exam settings updated.")
     } catch (e) {
       setError(e?.message || "Could not save exam settings.")
     } finally {
@@ -545,17 +619,66 @@ export default function TeacherGenerateExamPage() {
     }
   }
 
+  const applyBankSaveToState = (saved) => {
+    if (!saved?.length) return
+    const savedIds = new Set(saved.map((q) => q.id))
+    setLast((prev) => {
+      if (!prev?.questions?.length) return prev
+      return {
+        ...prev,
+        questions: prev.questions.map((q) =>
+          savedIds.has(q.id) ? { ...q, in_bank: true } : q,
+        ),
+      }
+    })
+  }
+
+  const refreshMaterialQuestionCounts = async () => {
+    const materialId = last?.exam?.source_material_id || activeMaterial?.id
+    if (!materialId) return
+    const counts = await fetchQuestionCountsByText([materialId])
+    setQuestionCounts((m) => {
+      const next = new Map(m)
+      for (const [id, n] of counts) next.set(id, n)
+      return next
+    })
+  }
+
+  const ensureExamQuestionsInBank = async () => {
+    const pendingIds = postGenQuestions.filter((q) => !isQuestionInBank(q)).map((q) => q.id)
+    if (!pendingIds.length) return []
+    const saved = await saveQuestionsToBank(pendingIds)
+    applyBankSaveToState(saved)
+    await refreshMaterialQuestionCounts()
+    return saved
+  }
+
   const onSaveDraft = async () => {
     if (!last?.exam || draftSaving) return
     setDraftSaving(true)
     setError("")
     try {
+      await ensureExamQuestionsInBank()
       await updateExam(last.exam.id, { status: "draft" })
-      setInfoNotice("Exam saved as draft.")
+      showToast("Exam saved as draft. All questions saved to your question bank.")
     } catch (e) {
       setError(e?.message || "Could not save draft.")
     } finally {
       setDraftSaving(false)
+    }
+  }
+
+  const onPublishClick = async () => {
+    if (!postGenQuestions.length || publishPreparing) return
+    setPublishPreparing(true)
+    setError("")
+    try {
+      await ensureExamQuestionsInBank()
+      setPublishConfirmOpen(true)
+    } catch (e) {
+      setError(e?.message || "Could not save questions to the bank.")
+    } finally {
+      setPublishPreparing(false)
     }
   }
 
@@ -591,7 +714,6 @@ export default function TeacherGenerateExamPage() {
         if (manualModal?.mode === "edit" && manualModal.question?.id === question.id) {
           resetManualModal()
         }
-        setInfoNotice("Question removed from bank.")
       }
     } catch (e) {
       setError(e?.message || "Could not remove question.")
@@ -647,69 +769,55 @@ export default function TeacherGenerateExamPage() {
 
   // ---------- ACTIONS ----------
 
-  const onGenerateQuestionsOnly = async () => {
+  const onSaveExamQuestionsToBank = async () => {
+    if (savingToBank || !postGenQuestions.length) return
+    const ids = postGenQuestions.map((q) => q.id).filter(Boolean)
+    if (!ids.length) return
+    setSavingToBank(true)
     setError("")
-    setInfoNotice("")
-    if (mode === MODE.BANK) {
-      setError('Question generation requires source content. Switch to "Saved content" and pick a note.')
-      return
-    }
-    if (mode === MODE.SAVED && !activeMaterial) {
-      setError("Pick a saved content item from the left first.")
-      return
-    }
-    setSavingQuestions(true)
     try {
-      const sourceTitle = activeMaterial.title
-      const sourceCategoryId = activeMaterial.category_id || null
-      const sourceCategoryTitle = activeMaterial.category?.title ?? null
-
-      console.log("ÃƒÂ°Ã…Â¸Ã‚Â¤Ã¢â‚¬â€œ Generating questions...", { mode, sourceTitle })
-      const saved = await generateQuestionsFromText({
-        content: activeMaterial.content,
-        title: sourceTitle,
-        categoryTitle: sourceCategoryTitle,
-        categoryId: sourceCategoryId,
-        textMaterialId: activeMaterial.id,
-        config: {
-          mcq: parseCfgCount(cfg.targetMcq) ?? 0,
-          short: parseCfgCount(cfg.targetShort) ?? 0,
-          essay: parseCfgCount(cfg.targetEssay) ?? 0,
-          difficulty: cfg.difficulty === "mixed" ? "medium" : cfg.difficulty,
-          marksMcq: parseCfgMarks(cfg.marksMcq) ?? 2,
-          marksShort: parseCfgMarks(cfg.marksShort) ?? 4,
-          marksEssay: parseCfgMarks(cfg.marksEssay) ?? 10,
-        },
-      })
-      console.log("ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â¾ Saving questions to Question Bank...", { count: saved.length })
-      // Show them in the right pane without persisting an exam.
-      setLast({ exam: null, questions: saved })
-      setQuestionCounts((m) => {
-        const next = new Map(m)
-        next.set(activeMaterial.id, (next.get(activeMaterial.id) || 0) + saved.length)
-        return next
-      })
+      const saved = await saveQuestionsToBank(ids)
+      if (saved.length) {
+        applyBankSaveToState(saved)
+      } else {
+        setLast((prev) => {
+          if (!prev?.questions?.length) return prev
+          const idSet = new Set(ids)
+          return {
+            ...prev,
+            questions: prev.questions.map((q) =>
+              idSet.has(q.id) ? { ...q, in_bank: true } : q,
+            ),
+          }
+        })
+      }
+      await refreshMaterialQuestionCounts()
+      showToast("All questions saved to your question bank.")
     } catch (e) {
-      console.error("ÃƒÂ¢Ã‚ÂÃ…â€™ Failed to generate questions:", e)
-      setError(e?.message || "Failed to generate questions.")
+      setError(e?.message || "Could not save questions to the bank.")
     } finally {
-      setSavingQuestions(false)
+      setSavingToBank(false)
     }
+  }
+
+  const onExamPublished = () => {
+    setPublishOpen(false)
+    showToast("Exam published successfully. Students can now attempt it.")
   }
 
   const onGenerateExam = async () => {
     setError("")
-    setInfoNotice("")
+    setConfigSubmitAttempted(true)
     if (!cfg.title.trim()) {
-      setError("Give the exam a title first.")
+      setError("Please give this exam a title.")
       return
     }
     if (mode !== MODE.BANK && !configValidation.hasAnyQuestion) {
-      setError("Add at least one question type to generate an exam.")
+      setError("Add at least one question type before generating.")
       return
     }
     if (mode !== MODE.BANK && !configValidation.allValid) {
-      setError("Fill in all required fields correctly before generating.")
+      setError(configValidation.blockingErrors[0] || "Fill in all required fields correctly before generating.")
       return
     }
     if (mode === MODE.BANK && picked.size === 0) {
@@ -726,7 +834,7 @@ export default function TeacherGenerateExamPage() {
     setGenerating(true)
     try {
       if (mode === MODE.BANK) {
-        console.log("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â¡ Creating exam directly from selected question bank rows...", {
+        console.log("[loading] Creating exam directly from selected question bank rows...", {
           selected: picked.size,
         })
         const categoryIds = new Set(
@@ -739,13 +847,12 @@ export default function TeacherGenerateExamPage() {
           categoryId: categoryIds.size === 1 ? Array.from(categoryIds)[0] : null,
           questionIds: selectedBankQuestions.map((q) => q.id),
         })
-        console.log("Ã¢Å“â€¦ Exam compiled from question bank:", exam?.id)
-        setPreviousExams((curr) => [exam, ...curr.filter((e) => e.id !== exam.id)].slice(0, 8))
+        console.log("[success] Exam compiled from question bank:", exam?.id)
         navigate("/teacher-dashboard/exams")
         return
       }
 
-      console.log("ÃƒÂ°Ã…Â¸Ã‚Â¤Ã¢â‚¬â€œ Generating exam from selected content...", { apiMode })
+      console.log("[loading] Generating exam from selected content...", { apiMode })
       const out = await generateExam({
         title: cfg.title.trim(),
         description: cfg.description.trim() || null,
@@ -757,22 +864,39 @@ export default function TeacherGenerateExamPage() {
           targetMcq: parseCfgCount(cfg.targetMcq) ?? 0,
           targetShort: parseCfgCount(cfg.targetShort) ?? 0,
           targetEssay: parseCfgCount(cfg.targetEssay) ?? 0,
+          marksMcq: parseCfgMarks(cfg.marksMcq) ?? 2,
+          marksShort: parseCfgMarks(cfg.marksShort) ?? 4,
+          marksEssay: parseCfgMarks(cfg.marksEssay) ?? 10,
           difficulty: cfg.difficulty,
           title: cfg.title.trim(),
           categoryTitle: mode === MODE.SAVED ? activeMaterial?.category?.title : null,
         },
         sourceQuestionIds: picked.size > 0 ? Array.from(picked) : undefined,
       })
-      console.log("Ã¢Å“â€¦ Generated paper saved:", out?.exam?.id)
-      setLast(out)
-      if (out?.exam) {
-        setPreviousExams((curr) => [out.exam, ...curr.filter((e) => e.id !== out.exam.id)].slice(0, 8))
-      }
+      console.log("[success] Generated paper saved:", out?.exam?.id)
+      const snap = snapshotGenerationConfig(cfg)
+      setGenerationCfgSnapshot(snap)
+      setLast({
+        ...out,
+        exam: out?.exam
+          ? {
+              ...out.exam,
+              title: snap.title,
+              duration_minutes: snap.durationMinutes,
+              difficulty: snap.difficulty,
+              total_marks: computeBreakdownFromConfig(snap).totalMarks,
+            }
+          : out.exam,
+        questions: (out?.questions ?? []).map((q) => ({
+          ...q,
+          in_bank: q.in_bank === true,
+        })),
+      })
     } catch (e) {
-      console.error("ÃƒÂ¢Ã‚ÂÃ…â€™ Failed to generate exam:", e)
+      console.error("[error] Failed to generate exam:", e)
       setError(
         e?.message?.includes("Failed to fetch")
-          ? "Backend unreachable. Make sure /Backend is running on port 4000."
+          ? "Unable to connect. Please try again."
           : e?.message || "Failed to compose exam.",
       )
     } finally {
@@ -823,24 +947,20 @@ export default function TeacherGenerateExamPage() {
           <p className="flex-1">{error}</p>
         </div>
       ) : null}
-      {infoNotice ? (
-        <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="flex-1">{infoNotice}</p>
-        </div>
-      ) : null}
 
-      {genSuccessBanner ? (
-        <div
-          role="status"
-          className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900 transition-opacity duration-300"
-        >
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-          {genSuccessBanner}
-        </div>
+      {toast ? (
+        <SuccessToast key={toast.key} text={toast.text} onDone={() => setToast(null)} />
       ) : null}
 
       {inPostGeneration ? (
+        <>
+        <button
+          type="button"
+          onClick={() => setBackConfirmOpen(true)}
+          className="text-left text-sm font-semibold text-[#5f4ce6] hover:text-[#4a46d4] hover:underline"
+        >
+          {"<- Back to Generate Exam"}
+        </button>
         <div className="grid min-h-[640px] grid-cols-1 gap-4 xl:grid-cols-[200px_minmax(0,1fr)_280px]">
           <PostGenSourcePanel summary={sourceSummary} onChangeContent={onChangePostGenContent} />
           <div
@@ -852,23 +972,10 @@ export default function TeacherGenerateExamPage() {
             <PostGenExamEditor
               exam={last.exam}
               questions={postGenQuestions}
+              displayTitle={postGenDisplayTitle}
+              durationMinutes={postGenDurationMinutes}
               difficultyLabel={postGenDifficultyLabel}
-              settingsOpen={settingsOpen}
-              settingsForm={examSettingsForm}
-              settingsSaving={examSettingsSaving}
-              onToggleSettings={() => {
-                setSettingsOpen((v) => !v)
-                if (!settingsOpen && last?.exam) {
-                  setExamSettingsForm({
-                    title: last.exam.title || "",
-                    duration_minutes: last.exam.duration_minutes || 60,
-                    description: last.exam.description || "",
-                  })
-                }
-              }}
-              onChangeSettings={setExamSettingsForm}
-              onSaveSettings={onSaveExamSettings}
-              onCancelSettings={() => setSettingsOpen(false)}
+              configBreakdown={postGenBreakdown}
               inlineEditId={inlineEditId}
               inlineEditForm={inlineEditForm}
               inlineEditSaving={inlineEditSaving}
@@ -884,20 +991,38 @@ export default function TeacherGenerateExamPage() {
             exam={last.exam}
             questions={postGenQuestions}
             breakdown={postGenBreakdown}
+            displayTitle={postGenDisplayTitle}
+            durationMinutes={postGenDurationMinutes}
             difficultyLabel={postGenDifficultyLabel}
             draftSaving={draftSaving}
-            onPublish={() => setPublishOpen(true)}
-            onSaveDraft={onSaveDraft}
-            onSaveToBank={() => {
-              setInfoNotice(
-                "All exam questions are already saved. Use Generate Exam → From existing questions to include them in a paper.",
-              )
+            settingsOpen={settingsOpen}
+            settingsForm={examSettingsForm}
+            settingsSaving={examSettingsSaving}
+            onToggleSettings={() => {
+              setSettingsOpen((v) => !v)
+              if (!settingsOpen && last?.exam) {
+                setExamSettingsForm({
+                  title: last.exam.title || "",
+                  duration_minutes: last.exam.duration_minutes || 60,
+                  description: last.exam.description || "",
+                })
+              }
             }}
-            previousExams={visiblePreviousExams}
-            previousLoading={previousLoading}
-            onOpenPrevious={(id) => navigate(`/teacher-dashboard/exams/${id}/review`)}
+            onChangeSettings={setExamSettingsForm}
+            onSaveSettings={onSaveExamSettings}
+            onCancelSettings={() => setSettingsOpen(false)}
+            onPublish={onPublishClick}
+            publishPreparing={publishPreparing}
+            onSaveDraft={onSaveDraft}
+            onSaveToBank={onSaveExamQuestionsToBank}
+            savingToBank={savingToBank}
+            allInBank={
+              postGenQuestions.length > 0 && postGenQuestions.every(isQuestionInBank)
+            }
+            marksStatus={postGenMarksStatus}
           />
         </div>
+        </>
       ) : mode === MODE.BANK ? (
         <FromExistingQuestionsTab
           bank={bank}
@@ -950,29 +1075,50 @@ export default function TeacherGenerateExamPage() {
             validation={configValidation}
             canGenerateExam={canGenerateExam}
             generating={generating}
-            savingQuestions={savingQuestions}
             mode={mode}
+            configSubmitAttempted={configSubmitAttempted}
             onGenerateExam={onGenerateExam}
-            onGenerateQuestionsOnly={onGenerateQuestionsOnly}
-            onAddManualQuestion={openAddManualQuestion}
             picked={picked}
             selectedBankSummary={selectedBankSummary}
-          />
-          {last && !last.exam ? (
-            <GeneratedSummary
-              data={last}
-              onOpenBank={() => navigate("/teacher-dashboard/generate-exam?tab=bank")}
-              onEditQuestion={openEditGeneratedQuestion}
-            />
-          ) : null}
-          <PreviousExamsPanel
-            exams={visiblePreviousExams}
-            loading={previousLoading}
-            onOpen={(id) => navigate(`/teacher-dashboard/exams/${id}/review`)}
           />
         </div>
       </div>
       )}
+
+      <ConfirmDialog
+        open={backConfirmOpen}
+        title="Discard this exam?"
+        destructive
+        busy={backActionBusy}
+        message={
+          <p>
+            This will delete the exam and return you to setup. Questions already saved to your
+            question bank will stay there.
+          </p>
+        }
+        cancelLabel="Stay on this page"
+        confirmLabel="Discard exam"
+        onConfirm={onDiscardExamAndLeaveReview}
+        onCancel={() => setBackConfirmOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={publishConfirmOpen}
+        title="Publish this exam?"
+        message={
+          <p>
+            Once published, students assigned to this exam will be able to see and attempt it. You
+            can unpublish it later from My Exams.
+          </p>
+        }
+        confirmLabel="Publish now"
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          setPublishConfirmOpen(false)
+          setPublishOpen(true)
+        }}
+        onCancel={() => setPublishConfirmOpen(false)}
+      />
 
       {last?.exam ? (
         <PublishExamModal
@@ -986,7 +1132,7 @@ export default function TeacherGenerateExamPage() {
             total_questions: last.exam.total_questions ?? postGenQuestions.length,
             total_marks: last.exam.total_marks,
           }}
-          onPublished={() => setPublishOpen(false)}
+          onPublished={onExamPublished}
         />
       ) : null}
 
@@ -1074,8 +1220,10 @@ function SavedContentPreview({ material, questionCount }) {
       <div className="grid h-full place-items-center rounded-2xl border border-dashed border-[#dbe0ee] bg-white p-8 text-center text-sm text-[#7d86a5]">
         <div>
           <FileText className="mx-auto h-7 w-7 text-[#bcc2d8]" />
-          <p className="mt-2 font-medium">Select content to preview</p>
-          <p className="mt-1 text-xs text-[#8a93ad]">Pick any saved note from the left rail to see its content.</p>
+          <p className="mt-2 font-medium">Select a note to preview its content</p>
+          <p className="mt-1 text-xs text-[#8a93ad]">
+            Choose any saved course note from the left to review it before generating your exam.
+          </p>
         </div>
       </div>
     )
@@ -1091,11 +1239,7 @@ function SavedContentPreview({ material, questionCount }) {
               <span className="rounded-full bg-[#eef1f7] px-2 py-0.5 font-medium text-[#5d6580]">
                 {material.category.title}
               </span>
-            ) : (
-              <span className="rounded-full bg-[#fff6e1] px-2 py-0.5 font-medium text-[#c89422]">
-                Uncategorized
-              </span>
-            )}
+            ) : null}
             {questionCount > 0 ? (
               <span className="rounded-full bg-[#e9f8f0] px-2 py-0.5 font-medium text-[#1f9d67]">
                 {questionCount} questions in bank
@@ -1128,12 +1272,7 @@ function RequiredMark() {
 function FieldError({ message }) {
   if (!message) return null
   return (
-    <p className="mt-1 flex items-start gap-1 text-xs text-red-600">
-      <span className="shrink-0" aria-hidden>
-        Ã¢Å¡Â 
-      </span>
-      <span>{message}</span>
-    </p>
+    <p className="mt-1 text-xs text-red-600">{message}</p>
   )
 }
 
@@ -1187,11 +1326,9 @@ function ConfigPanel({
   validation,
   canGenerateExam,
   generating,
-  savingQuestions,
   mode,
+  configSubmitAttempted,
   onGenerateExam,
-  onGenerateQuestionsOnly,
-  onAddManualQuestion,
   picked,
   selectedBankSummary,
 }) {
@@ -1202,23 +1339,19 @@ function ConfigPanel({
   const marksEssayRef = useRef(null)
 
   const touch = (key) => setTouched((t) => ({ ...t, [key]: true }))
-  const showErr = (key, error) => (touched[key] ? error : null)
+  const showErr = (key, error) => (touched[key] || configSubmitAttempted ? error : null)
   const patch = (key, val) => onChange((c) => ({ ...c, [key]: val }))
 
   const mcqN = validation.mcqCount.value ?? 0
   const shortN = validation.shortCount.value ?? 0
   const essayN = validation.essayCount.value ?? 0
 
-  const handleCountChange = (countKey, marksKey, marksRef, raw) => {
-    const prev = getCountValue(cfg[countKey])
+  const handleCountChange = (countKey, marksKey, raw) => {
     onChange((c) => {
       const nextCfg = { ...c, [countKey]: raw }
       if (getCountValue(raw) === 0) nextCfg[marksKey] = ""
       return nextCfg
     })
-    if (prev === 0 && getCountValue(raw) > 0) {
-      setTimeout(() => marksRef.current?.focus(), 0)
-    }
   }
 
   const blurCount = (key, max) => {
@@ -1341,7 +1474,7 @@ function ConfigPanel({
               placeholder="e.g. 5"
               error={showErr("targetMcq", validation.mcqCount.error)}
               valid={validation.mcqCount.valid && String(cfg.targetMcq).trim() !== ""}
-              onChange={(v) => handleCountChange("targetMcq", "marksMcq", marksMcqRef, v)}
+              onChange={(v) => handleCountChange("targetMcq", "marksMcq", v)}
               onBlur={() => blurCount("targetMcq", 50)}
             />
             <NumericField
@@ -1350,7 +1483,7 @@ function ConfigPanel({
               placeholder="e.g. 3"
               error={showErr("targetShort", validation.shortCount.error)}
               valid={validation.shortCount.valid && String(cfg.targetShort).trim() !== ""}
-              onChange={(v) => handleCountChange("targetShort", "marksShort", marksShortRef, v)}
+              onChange={(v) => handleCountChange("targetShort", "marksShort", v)}
               onBlur={() => blurCount("targetShort", 30)}
             />
             <NumericField
@@ -1359,7 +1492,7 @@ function ConfigPanel({
               placeholder="e.g. 2"
               error={showErr("targetEssay", validation.essayCount.error)}
               valid={validation.essayCount.valid && String(cfg.targetEssay).trim() !== ""}
-              onChange={(v) => handleCountChange("targetEssay", "marksEssay", marksEssayRef, v)}
+              onChange={(v) => handleCountChange("targetEssay", "marksEssay", v)}
               onBlur={() => blurCount("targetEssay", 10)}
             />
           </div>
@@ -1367,18 +1500,12 @@ function ConfigPanel({
           {validation.allocation ? (
             <p
               className={`mt-2 text-xs ${
-                validation.allocation.type === "over" ? "text-amber-700" : "text-emerald-700"
+                validation.allocation.type === "balanced" ? "text-emerald-700" : "text-red-600"
               }`}
             >
-              {validation.allocation.type === "remaining" ? (
-                <>Ã¢Å“â€œ {validation.allocation.amount} marks remaining to allocate</>
-              ) : validation.allocation.type === "balanced" ? (
-                <>Ã¢Å“â€œ Marks balanced perfectly</>
-              ) : (
-                <>
-                  Ã¢Å¡Â  {validation.allocation.amount} marks over your target ({validation.allocation.target})
-                </>
-              )}
+              {validation.allocation.type === "balanced"
+                ? "Marks balanced perfectly"
+                : validation.allocation.message}
             </p>
           ) : null}
 
@@ -1386,7 +1513,7 @@ function ConfigPanel({
             <NumericField
               label="Marks per MCQ"
               value={mcqN > 0 ? cfg.marksMcq : ""}
-              placeholder={mcqN > 0 ? "e.g. 2" : "Ã¢â‚¬â€"}
+              placeholder={mcqN > 0 ? "e.g. 2" : "-"}
               disabled={mcqN === 0}
               inputRef={marksMcqRef}
               error={showErr("marksMcq", validation.marksMcq.error)}
@@ -1397,7 +1524,7 @@ function ConfigPanel({
             <NumericField
               label="Marks per Short"
               value={shortN > 0 ? cfg.marksShort : ""}
-              placeholder={shortN > 0 ? "e.g. 4" : "Ã¢â‚¬â€"}
+              placeholder={shortN > 0 ? "e.g. 4" : "-"}
               disabled={shortN === 0}
               inputRef={marksShortRef}
               error={showErr("marksShort", validation.marksShort.error)}
@@ -1408,7 +1535,7 @@ function ConfigPanel({
             <NumericField
               label="Marks per Essay"
               value={essayN > 0 ? cfg.marksEssay : ""}
-              placeholder={essayN > 0 ? "e.g. 10" : "Ã¢â‚¬â€"}
+              placeholder={essayN > 0 ? "e.g. 10" : "-"}
               disabled={essayN === 0}
               inputRef={marksEssayRef}
               error={showErr("marksEssay", validation.marksEssay.error)}
@@ -1435,7 +1562,7 @@ function ConfigPanel({
         {!isBank && totals.ready ? (
           <>
             Total: <span className="font-semibold text-[#3e4768]">{totals.totalQuestions} questions</span>
-            {" Ã‚Â· "}
+            {" - "}
             <span className="font-semibold text-[#3e4768]">{totals.totalMarks} marks</span>
           </>
         ) : null}
@@ -1443,12 +1570,22 @@ function ConfigPanel({
 
       {showGlobalError ? <FieldError message={validation.globalError} /> : null}
 
+      {configSubmitAttempted && validation.blockingErrors?.length > 0 ? (
+        <div className="mt-3 space-y-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+          {validation.blockingErrors.map((msg) => (
+            <p key={msg} className="text-xs text-red-700">
+              {msg}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
       <div className="mt-4 space-y-2">
         <button
           type="button"
-          disabled={generating || savingQuestions || !canGenerateExam}
+          disabled={generating || !canGenerateExam}
           title={
-            !canGenerateExam && !generating && !savingQuestions
+            !canGenerateExam && !generating
               ? isBank
                 ? "Select at least one question to compile"
                 : "Fill in all required fields to generate"
@@ -1460,34 +1597,12 @@ function ConfigPanel({
           {generating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
           {generating
             ? isBank
-              ? "Compiling examÃ¢â‚¬Â¦"
-              : "Composing examÃ¢â‚¬Â¦"
+              ? "Compiling exam..."
+              : "Composing exam..."
             : isBank
               ? "Compile exam from selected"
               : "Generate exam with AI"}
         </button>
-        {!isBank ? (
-          <button
-            type="button"
-            disabled={generating || savingQuestions}
-            onClick={onGenerateQuestionsOnly}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#e3e6ef] bg-white text-xs font-semibold text-[#313a58] transition hover:bg-[#fafbff] disabled:opacity-60"
-          >
-            {savingQuestions ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <ListChecks className="h-3.5 w-3.5" />}
-            {savingQuestions ? "Generating questionsÃ¢â‚¬Â¦" : "Save to Question Bank"}
-          </button>
-        ) : null}
-        {onAddManualQuestion && !isBank ? (
-          <button
-            type="button"
-            disabled={generating || savingQuestions}
-            onClick={onAddManualQuestion}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#c9c4f5] bg-[#fafbff] text-xs font-semibold text-[#5f4ce6] transition hover:bg-[#f1efff] disabled:opacity-60"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add a Question Manually
-          </button>
-        ) : null}
       </div>
     </section>
   )
@@ -1497,12 +1612,7 @@ function PostGenSourcePanel({ summary, onChangeContent }) {
   return (
     <aside className="flex h-[640px] flex-col rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm">
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-[#151d3a]">
-          <span className="mr-1" aria-hidden>
-            ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾
-          </span>
-          <span className="break-words">{summary.title}</span>
-        </p>
+        <p className="break-words text-sm font-semibold text-[#151d3a]">{summary.title}</p>
         {summary.chars != null ? (
           <p className="mt-2 text-xs text-[#7f88a6]">{summary.chars.toLocaleString()} chars used</p>
         ) : summary.subtitle ? (
@@ -1514,7 +1624,7 @@ function PostGenSourcePanel({ summary, onChangeContent }) {
         onClick={onChangeContent}
         className="mt-auto text-left text-xs font-semibold text-[#5f4ce6] hover:text-[#4a46d4] hover:underline"
       >
-        Ã¢â€ Â Change content
+        {"<- Change content"}
       </button>
     </aside>
   )
@@ -1523,14 +1633,10 @@ function PostGenSourcePanel({ summary, onChangeContent }) {
 function PostGenExamEditor({
   exam,
   questions,
+  displayTitle,
+  durationMinutes,
   difficultyLabel,
-  settingsOpen,
-  settingsForm,
-  settingsSaving,
-  onToggleSettings,
-  onChangeSettings,
-  onSaveSettings,
-  onCancelSettings,
+  configBreakdown,
   inlineEditId,
   inlineEditForm,
   inlineEditSaving,
@@ -1541,79 +1647,19 @@ function PostGenExamEditor({
   onDeleteQuestion,
   onAddQuestion,
 }) {
-  const totalMarks = questions.reduce((s, q) => s + (Number(q.marks) || 0), 0)
-  const duration = exam.duration_minutes || 60
+  const headerQuestions = configBreakdown?.totalQuestions ?? questions.length
+  const headerMarks = configBreakdown?.totalMarks ?? questions.reduce((s, q) => s + (Number(q.marks) || 0), 0)
+  const duration = durationMinutes ?? exam.duration_minutes ?? 60
 
   return (
     <div className="flex h-[640px] flex-col overflow-hidden rounded-2xl border border-[#e7eaf3] bg-white shadow-sm">
       <header className="shrink-0 border-b border-[#eef1f7] p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold text-[#151d3a]">{exam.title || "Untitled exam"}</h2>
-            <p className="mt-1 text-xs text-[#7f88a6]">
-              {questions.length} questions Ãƒâ€šÃ‚Â· {totalMarks} marks Ãƒâ€šÃ‚Â· {duration} min Ãƒâ€šÃ‚Â· {difficultyLabel}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onToggleSettings}
-            className="shrink-0 rounded-xl border border-[#e3e6ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#313a58] hover:bg-[#fafbff]"
-          >
-            Edit settings
-          </button>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-[#151d3a]">{displayExamTitle(displayTitle || exam.title)}</h2>
+          <p className="mt-1 text-xs text-[#7f88a6]">
+            {headerQuestions} questions - {headerMarks} marks - {duration} min - {difficultyLabel}
+          </p>
         </div>
-        {settingsOpen ? (
-          <div className="mt-4 space-y-3 rounded-xl border border-[#eef1f7] bg-[#fafbff] p-3">
-            <label className="block text-xs">
-              <span className="text-[#5d6580]">Title</span>
-              <input
-                value={settingsForm.title}
-                onChange={(e) => onChangeSettings((f) => ({ ...f, title: e.target.value }))}
-                className="mt-1 h-10 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
-              />
-            </label>
-            <label className="block text-xs">
-              <span className="text-[#5d6580]">Duration (minutes)</span>
-              <input
-                type="number"
-                min={1}
-                value={settingsForm.duration_minutes}
-                onChange={(e) =>
-                  onChangeSettings((f) => ({ ...f, duration_minutes: Number(e.target.value) }))
-                }
-                className="mt-1 h-10 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
-              />
-            </label>
-            <label className="block text-xs">
-              <span className="text-[#5d6580]">Description (optional)</span>
-              <textarea
-                rows={2}
-                value={settingsForm.description}
-                onChange={(e) => onChangeSettings((f) => ({ ...f, description: e.target.value }))}
-                className="mt-1 w-full resize-none rounded-xl border border-[#e3e6ef] px-3 py-2 text-sm outline-none focus:border-[#6562f1]"
-              />
-            </label>
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={onCancelSettings}
-                disabled={settingsSaving}
-                className="h-9 rounded-xl border border-[#e3e6ef] bg-white px-3 text-xs font-semibold text-[#313a58]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={onSaveSettings}
-                disabled={settingsSaving || !settingsForm.title.trim()}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#6562f1] px-3 text-xs font-semibold text-white disabled:opacity-60"
-              >
-                {settingsSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                Save
-              </button>
-            </div>
-          </div>
-        ) : null}
       </header>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
@@ -1783,11 +1829,11 @@ function PostGenQuestionCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="text-xs font-semibold text-[#7f88a6]">
           <span className="text-[#151d3a]">Q{index + 1}</span>
-          {" Ãƒâ€šÃ‚Â· "}
+          {" - "}
           <span className="rounded bg-[#f1efff] px-1.5 py-0.5 text-[#5f4ce6]">{typeLabel}</span>
-          {" Ãƒâ€šÃ‚Â· "}
+          {" - "}
           {diffLabel}
-          {" Ãƒâ€šÃ‚Â· "}
+          {" - "}
           {q.marks} pt{Number(q.marks) === 1 ? "" : "s"}
         </p>
         <div className="flex shrink-0 gap-1.5">
@@ -1816,9 +1862,18 @@ function PostGenQuestionCard({
             const letter = String.fromCharCode(65 + optIdx)
             const isCorrect = correctLetter === letter
             return (
-              <li key={`${letter}-${opt}`} className="flex gap-2 rounded-lg bg-[#fafbff] px-3 py-2">
-                <span className="text-[#8a93ad]">{isCorrect ? "Ã¢Å“â€œ" : "Ã¢â€”â€¹"}</span>
-                <span>
+              <li
+                key={`${letter}-${opt}`}
+                className={`flex gap-2 rounded-lg px-3 py-2 ${
+                  isCorrect ? "border border-emerald-100 bg-emerald-50" : "bg-[#fafbff]"
+                }`}
+              >
+                {isCorrect ? (
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden />
+                ) : (
+                  <span className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                )}
+                <span className={isCorrect ? "text-[#1a2341]" : "text-[#5d6580]"}>
                   {letter}. {opt}
                 </span>
               </li>
@@ -1827,7 +1882,7 @@ function PostGenQuestionCard({
         </ul>
       ) : null}
       {q.question_type === "mcq" && correctLetter ? (
-        <p className="mt-2 text-xs font-medium text-emerald-700">Ã¢Å“â€œ Correct: {correctLetter}</p>
+        <p className="mt-2 text-xs font-medium text-emerald-700">Correct: {correctLetter}</p>
       ) : null}
       {q.question_type !== "mcq" && q.model_answer ? (
         <details className="mt-3 rounded-xl border border-[#eef1f7] bg-[#fafbff] text-sm">
@@ -1846,207 +1901,181 @@ function PostGenActionsPanel({
   exam,
   questions,
   breakdown,
+  displayTitle,
+  durationMinutes,
   difficultyLabel,
   draftSaving,
+  publishPreparing = false,
+  savingToBank = false,
+  allInBank = false,
+  settingsOpen,
+  settingsForm,
+  settingsSaving,
+  onToggleSettings,
+  onChangeSettings,
+  onSaveSettings,
+  onCancelSettings,
   onPublish,
   onSaveDraft,
   onSaveToBank,
-  previousExams,
-  previousLoading,
-  onOpenPrevious,
+  marksStatus,
 }) {
-  const totalMarks = questions.reduce((s, q) => s + (Number(q.marks) || 0), 0)
+  const liveBreakdown = useMemo(() => computeQuestionBreakdown(questions), [questions])
+  const summaryQuestions = liveBreakdown.totalQuestions
+  const summaryMarks = liveBreakdown.totalMarks
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm">
-        <p className="text-sm font-semibold text-[#151d3a]">Exam ready</p>
-        <p className="mt-1 text-xs text-[#7f88a6]">
-          {questions.length} questions Ãƒâ€šÃ‚Â· {totalMarks} marks
-        </p>
-        <div className="mt-4 space-y-2">
+      <section className="rounded-2xl border border-[#e7eaf3] bg-white p-4 text-xs text-[#5d6580] shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-[#151d3a]">Exam summary</p>
           <button
             type="button"
-            onClick={onPublish}
-            disabled={!questions.length}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-sm font-semibold text-white transition hover:bg-[#5a56e2] disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onToggleSettings}
+            className="shrink-0 text-xs font-semibold text-[#5f4ce6] hover:text-[#4a46d4] hover:underline"
           >
-            Publish Exam
-          </button>
-          <button
-            type="button"
-            onClick={onSaveDraft}
-            disabled={draftSaving}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#e3e6ef] bg-white text-xs font-semibold text-[#313a58] transition hover:bg-[#fafbff] disabled:opacity-60"
-          >
-            {draftSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            Save as Draft
-          </button>
-          <button
-            type="button"
-            onClick={onSaveToBank}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#e3e6ef] bg-[#fafbff] text-xs font-semibold text-[#5d6580] transition hover:bg-white"
-          >
-            Save to Question Bank
+            Edit settings
           </button>
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-[#e7eaf3] bg-white p-4 text-xs text-[#5d6580] shadow-sm">
-        <p className="text-sm font-semibold text-[#151d3a]">Exam summary</p>
+        {settingsOpen ? (
+          <div className="mt-3 space-y-3 rounded-xl border border-[#eef1f7] bg-[#fafbff] p-3">
+            <label className="block text-xs">
+              <span className="text-[#5d6580]">Title</span>
+              <input
+                value={settingsForm.title}
+                onChange={(e) => onChangeSettings((f) => ({ ...f, title: e.target.value }))}
+                className="mt-1 h-10 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="text-[#5d6580]">Duration (minutes)</span>
+              <input
+                type="number"
+                min={1}
+                value={settingsForm.duration_minutes}
+                onChange={(e) =>
+                  onChangeSettings((f) => ({ ...f, duration_minutes: Number(e.target.value) }))
+                }
+                className="mt-1 h-10 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="text-[#5d6580]">Description (optional)</span>
+              <textarea
+                rows={2}
+                value={settingsForm.description}
+                onChange={(e) => onChangeSettings((f) => ({ ...f, description: e.target.value }))}
+                className="mt-1 w-full resize-none rounded-xl border border-[#e3e6ef] px-3 py-2 text-sm outline-none focus:border-[#6562f1]"
+              />
+            </label>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={onCancelSettings}
+                disabled={settingsSaving}
+                className="h-9 rounded-xl border border-[#e3e6ef] bg-white px-3 text-xs font-semibold text-[#313a58]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onSaveSettings}
+                disabled={settingsSaving || !settingsForm.title.trim()}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#6562f1] px-3 text-xs font-semibold text-white disabled:opacity-60"
+              >
+                {settingsSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Save
+              </button>
+            </div>
+          </div>
+        ) : null}
         <dl className="mt-3 space-y-1.5">
           <div className="flex justify-between gap-2">
             <dt className="text-[#7f88a6]">Title</dt>
-            <dd className="max-w-[58%] truncate text-right font-medium text-[#151d3a]">{exam.title}</dd>
+            <dd className="max-w-[58%] truncate text-right font-medium text-[#151d3a]">
+              {displayExamTitle(displayTitle || exam.title)}
+            </dd>
           </div>
           <div className="flex justify-between gap-2">
             <dt className="text-[#7f88a6]">Duration</dt>
-            <dd className="font-medium text-[#151d3a]">{exam.duration_minutes || 60} min</dd>
+            <dd className="font-medium text-[#151d3a]">{durationMinutes ?? exam.duration_minutes ?? 60} min</dd>
           </div>
           <div className="flex justify-between gap-2">
             <dt className="text-[#7f88a6]">Difficulty</dt>
             <dd className="font-medium text-[#151d3a]">{difficultyLabel}</dd>
           </div>
-          {breakdown.mcq.count > 0 ? (
-            <div>
-              MCQs: {breakdown.mcq.count} ÃƒÆ’Ã¢â‚¬â€ {breakdown.mcq.marksEach} pt = {breakdown.mcq.subtotal}
-            </div>
-          ) : null}
-          {breakdown.short.count > 0 ? (
-            <div>
-              Short: {breakdown.short.count} ÃƒÆ’Ã¢â‚¬â€ {breakdown.short.marksEach} pt = {breakdown.short.subtotal}
-            </div>
-          ) : null}
-          {breakdown.essay.count > 0 ? (
-            <div>
-              Essay: {breakdown.essay.count} ÃƒÆ’Ã¢â‚¬â€ {breakdown.essay.marksEach} pt = {breakdown.essay.subtotal}
-            </div>
-          ) : null}
         </dl>
+        {marksStatus ? (
+          <div className="mt-3 border-t border-[#eef1f7] pt-3">
+            <p className="text-[#7f88a6]">Target: {marksStatus.target} marks</p>
+            <p className="mt-1 text-[#7f88a6]">Current: {marksStatus.current} marks</p>
+            <p
+              className={classNames(
+                "mt-1.5 font-medium",
+                marksStatus.tone === "balanced" ? "text-emerald-600" : "text-amber-600",
+              )}
+            >
+              {marksStatus.message}
+            </p>
+          </div>
+        ) : null}
         <p className="mt-3 border-t border-[#eef1f7] pt-3 font-semibold text-[#151d3a]">
-          Total: {breakdown.totalQuestions} questions Ãƒâ€šÃ‚Â· {breakdown.totalMarks} pts
+          Total: {liveBreakdown.totalQuestions} questions - {liveBreakdown.totalMarks} pts
         </p>
       </section>
 
-      <PreviousExamsPanel exams={previousExams} loading={previousLoading} onOpen={onOpenPrevious} />
-    </div>
-  )
-}
-
-function GeneratedSummary({ data, onOpenBank, onEditQuestion }) {
-  return (
-    <section className="rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
-        <CheckCircle2 className="h-4 w-4" />
-        Questions added to bank
-      </div>
-      <p className="mt-2 text-xs text-[#7f88a6]">
-        {data.questions?.length || 0} new question{data.questions?.length === 1 ? "" : "s"} ready in your bank. Edit
-        any item below before compiling an exam.
-      </p>
-
-      <p className="mt-3 text-xs">
-        <button
-          type="button"
-          onClick={onOpenBank}
-          className="font-semibold text-[#5f4ce6] hover:text-[#4a46d4] hover:underline"
-        >
-          Open in Generate Exam (from existing questions)
-        </button>
-      </p>
-
-      {data.questions?.length ? (
-        <ol className="mt-4 max-h-96 space-y-2 overflow-y-auto pr-1">
-          {data.questions.map((q, i) => (
-            <li
-              key={q.id}
-              className="flex flex-col gap-2 rounded-lg border border-[#e7eaf3] bg-[#fafbff] p-2.5 text-xs sm:flex-row sm:items-start"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-[#8a93ad]">
-                  <span className="rounded bg-[#f1efff] px-1.5 py-0.5 font-semibold text-[#5f4ce6]">
-                    Q{i + 1} Ãƒâ€šÃ‚Â· {q.question_type}
-                  </span>
-                  <span>{q.difficulty}</span>
-                  <span>{q.marks} pts</span>
-                </div>
-                <p className="mt-1 text-[#1a2341]">{q.prompt}</p>
-              </div>
-              {onEditQuestion ? (
-                <button
-                  type="button"
-                  onClick={() => onEditQuestion(q)}
-                  className="inline-flex shrink-0 items-center justify-center gap-1 self-start rounded-lg border border-[#e3e6ef] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#313a58] hover:bg-white"
-                >
-                  <Pencil className="h-3 w-3" />
-                  Edit
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-      ) : null}
-    </section>
-  )
-}
-
-function formatExamDate(iso) {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ""
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
-}
-
-function PreviousExamsPanel({ exams, loading, onOpen }) {
-  return (
-    <section className="rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-semibold text-[#151d3a]">
-          <Library className="h-4 w-4 text-[#6562f1]" />
-          Previously generated
-        </div>
-        {loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-[#9aa3c2]" /> : null}
-      </div>
-      <p className="mt-1 text-xs text-[#7f88a6]">
-        Open older papers for review or use them as inspiration before creating a new one.
-      </p>
-
-      <div className="mt-3 space-y-2">
-        {!loading && exams.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[#dfe3ee] p-4 text-center text-xs text-[#8a93ad]">
-            No exams generated yet. Your recent exams will appear here.
-          </div>
-        ) : null}
-        {exams.map((exam, index) => {
-          const title = isBrokenExamTitle(exam.title) ? "Untitled exam" : exam.title || "Untitled exam"
-          const generated = formatExamDate(exam.created_at)
-          return (
+      <section className="rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm">
+        <p className="text-sm font-semibold text-[#151d3a]">Exam ready</p>
+        <p className="mt-1 text-xs text-[#7f88a6]">
+          {summaryQuestions} questions - {summaryMarks} marks
+        </p>
+        <div className="mt-4 space-y-3">
+          <div>
             <button
-              key={exam.id}
               type="button"
-              onClick={() => onOpen(exam.id)}
-              className="flex w-full items-start gap-3 rounded-xl border border-[#e7eaf3] bg-white p-3 text-left transition hover:border-[#cfc8ff] hover:bg-[#fafbff]"
+              onClick={onPublish}
+              disabled={!questions.length || publishPreparing}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-sm font-semibold text-white shadow-sm transition-all duration-200 ease-out hover:bg-[#5a56e2] hover:shadow-md active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none disabled:hover:bg-[#6562f1] disabled:active:scale-100"
             >
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#f1efff] text-xs font-bold text-[#5f4ce6]">
-                {index + 1}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold text-[#151d3a]">{title}</span>
-                <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[#7f88a6]">
-                  {exam.category?.title ? (
-                    <span className="rounded-full bg-[#eef1f7] px-2 py-0.5 text-[#5d6580]">
-                      {exam.category.title}
-                    </span>
-                  ) : null}
-                  {generated ? <span>{generated}</span> : null}
-                  <span>{exam.duration_minutes || 60} min</span>
-                  <span>{exam.total_marks || 0} marks</span>
-                </span>
-              </span>
+              {publishPreparing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {publishPreparing ? "Preparing..." : "Publish Exam"}
             </button>
-          )
-        })}
-      </div>
-    </section>
+            <p className="mt-1.5 text-center text-[11px] leading-snug text-[#8a93ad]">
+              Publishes exam and saves all questions to your bank
+            </p>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              disabled={draftSaving}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#e3e6ef] bg-white text-xs font-semibold text-[#313a58] shadow-sm transition-all duration-200 ease-out hover:border-[#c9c4f5] hover:bg-[#fafbff] hover:shadow-md active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none disabled:hover:border-[#e3e6ef] disabled:hover:bg-white disabled:active:scale-100"
+            >
+              {draftSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Save as Draft
+            </button>
+            <p className="mt-1.5 text-center text-[11px] leading-snug text-[#8a93ad]">
+              Keeps exam hidden and saves all questions to your bank
+            </p>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={onSaveToBank}
+              disabled={savingToBank || !questions.length}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#e3e6ef] bg-[#fafbff] text-xs font-semibold text-[#5d6580] shadow-sm transition-all duration-200 ease-out hover:border-[#c9c4f5] hover:bg-white hover:text-[#4a46d4] hover:shadow-md active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none disabled:hover:border-[#e3e6ef] disabled:hover:bg-[#fafbff] disabled:hover:text-[#5d6580] disabled:active:scale-100"
+            >
+              {savingToBank ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              {savingToBank ? "Saving..." : allInBank ? "Saved to Question Bank" : "Save to Question Bank"}
+              </button>
+            <p className="mt-1.5 text-center text-[11px] leading-snug text-[#8a93ad]">
+              {allInBank
+                ? "All questions are in your bank for reuse"
+                : "Saves questions only, exam stays as draft"}
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
   )
 }

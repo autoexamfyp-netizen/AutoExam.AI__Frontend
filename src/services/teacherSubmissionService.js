@@ -12,7 +12,7 @@ export async function fetchTeacherSubmissions(params = {}) {
 }
 
 export async function fetchSubmissionDetail(id) {
-  console.log("📄 Opening submission:", id)
+  console.log("[folder] Opening submission:", id)
   const out = await apiGet(`/api/submissions/${id}`)
   console.log("✅ Submission loaded")
   return out

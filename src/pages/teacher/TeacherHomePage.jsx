@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useState } from "react"
+﻿import { useEffect, useMemo, useState } from "react"
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
   Legend,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   Tooltip,
@@ -46,8 +44,6 @@ function firstNameFromUser(user) {
 }
 
 const TYPE_COLORS = ["#6562f1", "#2ca36c", "#c89422"]
-const TOPIC_COLORS = ["#6562f1", "#3f67c8", "#2ca36c", "#c89422", "#c94a4a", "#7e57c2"]
-
 export default function TeacherHomePage() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -70,7 +66,7 @@ export default function TeacherHomePage() {
         if (!cancelled) {
           setError(
             e?.message?.includes("Failed to fetch")
-              ? "Backend is not running. Start it with `npm run dev` inside /Backend."
+              ? "Unable to connect. Please try again."
               : e?.message || "Could not load dashboard.",
           )
           setLoading(false)
@@ -84,8 +80,6 @@ export default function TeacherHomePage() {
 
   const byType = useMemo(() => data?.analytics?.byType ?? [], [data])
   const byDifficulty = useMemo(() => data?.analytics?.byDifficulty ?? [], [data])
-  const byTopic = useMemo(() => data?.analytics?.byTopic ?? [], [data])
-  const examsTrend = useMemo(() => data?.analytics?.examsTrend ?? [], [data])
 
   if (loading) {
     return (
@@ -214,7 +208,7 @@ export default function TeacherHomePage() {
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="min-w-0 max-w-full rounded-2xl border border-[#e7eaf3] bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-[#151d3a]">Questions by type</h2>
-          <p className="text-xs text-[#7f88a6]">Live mix across your question bank</p>
+          <p className="text-xs text-[#7f88a6]">Breakdown of question types you've created so far</p>
           <div className="mt-4 w-full min-w-0 max-w-full">
             <StableChartBox heightPx={220}>
               {(w, h) => (
@@ -247,56 +241,6 @@ export default function TeacherHomePage() {
                 </BarChart>
               )}
             </StableChartBox>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="min-w-0 max-w-full rounded-2xl border border-[#e7eaf3] bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-[#151d3a]">Topic distribution</h2>
-          <p className="text-xs text-[#7f88a6]">Top topics across your bank</p>
-          <div className="mt-4 w-full min-w-0 max-w-full">
-            {byTopic.length === 0 ? (
-              <p className="py-8 text-center text-xs text-[#8a93ad]">No topics yet — generate some questions.</p>
-            ) : (
-              <StableChartBox heightPx={220}>
-                {(w, h) => (
-                  <BarChart width={w} height={h} data={byTopic} margin={{ top: 8, right: 8, left: -16, bottom: 0 }} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#eef1f7" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} width={120} />
-                    <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e7eaf3", fontSize: 12 }} />
-                    <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                      {byTopic.map((_, i) => (
-                        <Cell key={i} fill={TOPIC_COLORS[i % TOPIC_COLORS.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                )}
-              </StableChartBox>
-            )}
-          </div>
-        </div>
-
-        <div className="min-w-0 max-w-full rounded-2xl border border-[#e7eaf3] bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-[#151d3a]">Exam creation trend</h2>
-          <p className="text-xs text-[#7f88a6]">Exams created per week</p>
-          <div className="mt-4 w-full min-w-0 max-w-full">
-            {examsTrend.length === 0 ? (
-              <p className="py-8 text-center text-xs text-[#8a93ad]">No exams yet.</p>
-            ) : (
-              <StableChartBox heightPx={220}>
-                {(w, h) => (
-                  <LineChart width={w} height={h} data={examsTrend} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#eef1f7" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: "#8a93ad" }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e7eaf3", fontSize: 12 }} />
-                    <Line type="monotone" dataKey="count" stroke="#6562f1" strokeWidth={2} dot={{ r: 3, fill: "#6562f1" }} />
-                  </LineChart>
-                )}
-              </StableChartBox>
-            )}
           </div>
         </div>
       </section>

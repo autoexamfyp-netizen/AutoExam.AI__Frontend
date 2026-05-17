@@ -3,13 +3,9 @@ import { Link, useLocation, useNavigate } from "react-router-dom"
 import { GraduationCap, Mail } from "lucide-react"
 import { supabase } from "../lib/supabaseClient"
 import { useAuth } from "../hooks/useAuth"
-import { getEmailConfirmRedirectUrl } from "../auth/authPaths"
-import { formatAuthError } from "../auth/formatAuthError"
 import { dashboardPathForRole, isEmailVerified, resolveRole } from "../auth/roles"
 import OtpVerificationForm from "../components/otp/OtpVerificationForm"
 import FullPageLoader from "../components/ui/FullPageLoader"
-import Spinner from "../components/ui/Spinner"
-import { useLoading } from "../hooks/useLoading"
 
 export default function VerifyEmailRequiredPage() {
   const navigate = useNavigate()
@@ -17,8 +13,6 @@ export default function VerifyEmailRequiredPage() {
   const { user, session, loading, initialized, signOut, refreshSession } = useAuth()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [resent, setResent] = useState(false)
-  const { run } = useLoading()
 
   const email = useMemo(() => user?.email || location.state?.email || "", [user, location.state])
 
@@ -35,31 +29,6 @@ export default function VerifyEmailRequiredPage() {
     const role = resolveRole(user)
     navigate(role ? dashboardPathForRole(role) : "/login", { replace: true })
     return null
-  }
-
-  const handleResend = async () => {
-    setError("")
-    setResent(false)
-    if (!email) {
-      setError("No email on file. Sign out and sign up again.")
-      return
-    }
-    await run(async () => {
-      setBusy(true)
-      const { error: resendError } = await supabase.auth.resend({
-        type: "signup",
-        email,
-        options: {
-          emailRedirectTo: getEmailConfirmRedirectUrl(),
-        },
-      })
-      setBusy(false)
-      if (resendError) {
-        setError(formatAuthError(resendError))
-        return
-      }
-      setResent(true)
-    }, "Sending verification email…")
   }
 
   const handleSignOut = async () => {
@@ -98,46 +67,47 @@ export default function VerifyEmailRequiredPage() {
           </div>
           <h1 className="max-w-[340px] text-4xl font-bold leading-tight tracking-[-1px]">Verify to continue</h1>
           <p className="mt-5 max-w-[420px] text-lg text-[#a9b4d4]">
-            Your account exists but your email is not verified yet.
+            Enter the verification code from your email to access your dashboard.
           </p>
         </div>
         <p className="relative z-10 text-sm text-[#9ca8cc]">© 2026 AutoExam.ai (COMSATS University Islamabad, Lahore)</p>
       </aside>
 
       <section className="flex min-h-screen w-full items-center justify-center px-4 py-8 sm:px-8 lg:w-[58%]">
-        <div className="w-full max-w-[560px] space-y-8">
+        <div className="w-full max-w-[560px]">
           <div className="rounded-2xl border border-[#e3e6ef] bg-white p-8 shadow-sm">
             <div className="mx-auto mb-6 grid h-14 w-14 place-items-center rounded-2xl bg-[#fff6e3] text-[#c89422]">
               <Mail className="h-7 w-7" />
             </div>
             <h2 className="text-center text-2xl font-bold text-[#11162e]">Email not verified</h2>
             <p className="mt-3 text-center text-sm text-[#7b809a]">
-              We sent a confirmation link to <span className="font-medium text-[#1b1f36]">{email}</span>. Open it or use
-              the code below.
+              Enter the verification code we sent to{" "}
+              <span className="font-medium text-[#1b1f36]">{email}</span> to unlock your dashboard.
             </p>
 
-            <div className="mt-6 rounded-xl border border-[#eef1f7] bg-[#f9fafc] px-4 py-3 text-sm text-[#5a627e]">
-              <p className="font-medium text-[#1d233d]">Verified state</p>
-              <p className="mt-1">You are signed in, but full access requires a verified email address.</p>
-            </div>
+            <p className="mt-4 text-center text-xs text-[#99a0b7]">
+              You are signed in, but your email must be verified before you can continue.
+            </p>
 
             {error ? <p className="mt-4 text-center text-sm text-red-500">{error}</p> : null}
-            {resent ? <p className="mt-4 text-center text-sm text-green-600">Another email is on the way.</p> : null}
 
-            <button
-              type="button"
-              onClick={handleResend}
-              disabled={busy}
-              className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {busy ? <Spinner size="sm" decorative /> : null}
-              {busy ? "Please wait…" : "Resend verification email"}
-            </button>
+            {email ? (
+              <div className="mt-8">
+                <OtpVerificationForm
+                  email={email}
+                  flow="signup"
+                  onSuccess={handleOtpSuccess}
+                  embedded
+                  autoSubmit
+                />
+              </div>
+            ) : null}
+
             <button
               type="button"
               onClick={handleSignOut}
               disabled={busy}
-              className="mt-3 h-12 w-full rounded-xl border border-[#e3e6ef] bg-white text-sm font-semibold text-[#313a58] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-6 h-12 w-full rounded-xl border border-[#e3e6ef] bg-white text-sm font-semibold text-[#313a58] disabled:cursor-not-allowed disabled:opacity-60"
             >
               Sign out
             </button>
@@ -148,18 +118,6 @@ export default function VerifyEmailRequiredPage() {
               </Link>
             </p>
           </div>
-
-          {email ? (
-            <div className="rounded-2xl border border-[#e3e6ef] bg-white p-8 shadow-sm">
-              <OtpVerificationForm
-                email={email}
-                flow="signup"
-                onSuccess={handleOtpSuccess}
-                title="Enter verification code"
-                subtitle="Use the code from your latest email if OTP is enabled for your Supabase project."
-              />
-            </div>
-          ) : null}
         </div>
       </section>
     </div>

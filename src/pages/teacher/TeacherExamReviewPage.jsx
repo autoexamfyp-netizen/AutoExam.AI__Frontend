@@ -20,6 +20,7 @@ import ConfirmDialog from "../../components/student/ConfirmDialog"
 import PublishExamModal from "../../components/exam/PublishExamModal"
 import { deleteExam, duplicateExam, fetchExam, updateExam } from "../../services/examService"
 import { API_BASE } from "../../services/apiClient"
+import { displayExamTitle } from "../../utils/examTitle"
 
 export default function TeacherExamReviewPage() {
   const { examId } = useParams()
@@ -138,7 +139,7 @@ export default function TeacherExamReviewPage() {
     setDuplicating(true)
     setError("")
     try {
-      const copy = await duplicateExam(exam.id, `${exam.title} (copy)`)
+      const copy = await duplicateExam(exam.id, `${displayExamTitle(exam.title)} (copy)`)
       navigate(`/teacher-dashboard/exams/${copy.id}/review`)
     } catch (e) {
       setError(e?.message || "Could not duplicate exam.")
@@ -282,7 +283,7 @@ export default function TeacherExamReviewPage() {
         message={
           <>
             <p>
-              <strong className="text-[#151d3a]">{exam.title}</strong> will be removed permanently.
+              <strong className="text-[#151d3a]">{displayExamTitle(exam.title)}</strong> will be removed permanently.
             </p>
             <p className="mt-2 text-xs text-[#7f88a6]">
               The underlying question bank questions will stay available.
@@ -304,7 +305,7 @@ export default function TeacherExamReviewPage() {
             <ArrowLeft className="h-3.5 w-3.5" /> Back to generated exams
           </Link>
           <h1 className="text-xl font-semibold text-[#151d3a] sm:text-2xl">Exam review</h1>
-          <p className="mt-1 break-words text-sm text-[#7d86a5]">{exam.title}</p>
+          <p className="mt-1 break-words text-sm text-[#7d86a5]">{displayExamTitle(exam.title)}</p>
           <p className="mt-1 text-xs text-[#8a93ad]">
             {questions.length} questions · {exam.total_marks ?? "—"} marks · {exam.duration_minutes} min
             {exam.category?.title ? ` · ${exam.category.title}` : ""}

@@ -1,7 +1,5 @@
 /** Sanitize exam title input — strip mojibake and non-ASCII characters. */
 
-import { isBrokenExamTitle } from "../components/materials/noteUtils"
-
 const MOJIBAKE_FIXES = [
   [/Ã¢â‚¬â€/g, "-"],
   [/Ã¢â‚¬â„¢/g, "'"],
@@ -12,6 +10,16 @@ const MOJIBAKE_FIXES = [
   [/â€"/g, "-"],
   [/â€™/g, "'"],
 ]
+
+export function isBrokenExamTitle(title) {
+  if (!title) return true
+  if (title.startsWith("Category")) return true
+  if (title.includes("Select category")) return true
+  if (title.includes("Ã")) return true
+  if (title.includes("â€")) return true
+  if (title.trim().length < 2) return true
+  return false
+}
 
 export function sanitizeExamTitleInput(value) {
   let s = String(value ?? "")
