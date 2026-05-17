@@ -4,7 +4,6 @@ import {
   AlertCircle,
   ClipboardList,
   Folder,
-  Inbox,
   Layers,
   Search,
   Zap,
@@ -108,15 +107,10 @@ export default function TeacherMyExamsPage() {
   }, [categories, groups])
 
   const totalPapers = useMemo(() => groups.reduce((n, g) => n + g.exams.length, 0), [groups])
-  const uncategorizedPapers = useMemo(
-    () => groups.find((g) => g.id === null)?.exams.length || 0,
-    [groups],
-  )
 
   const filteredGroups = useMemo(() => {
     let g = groups
-    if (activeSubject === UNCAT_ID) g = g.filter((x) => x.id === null)
-    else if (activeSubject !== ALL_ID) g = g.filter((x) => x.id === activeSubject)
+    if (activeSubject !== ALL_ID) g = g.filter((x) => x.id === activeSubject)
 
     const qLower = query.trim().toLowerCase()
     if (!qLower) return g
@@ -270,13 +264,6 @@ export default function TeacherMyExamsPage() {
                 count={totalPapers}
                 active={activeSubject === ALL_ID}
                 onClick={() => setActiveSubject(ALL_ID)}
-              />
-              <SubjectItem
-                icon={Inbox}
-                label="Uncategorized"
-                count={uncategorizedPapers}
-                active={activeSubject === UNCAT_ID}
-                onClick={() => setActiveSubject(UNCAT_ID)}
               />
               <div className="my-2 border-t border-[#eef1f7]" />
               {subjects
@@ -452,9 +439,6 @@ function PapersView({
             {showSubjectTitle ? (
               <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#151d3a]">
                 <Folder className="h-4 w-4 text-[#7d86a5]" /> {groupTitle}
-                <span className="rounded-full bg-[#eef1f7] px-2 py-0.5 text-[11px] font-semibold text-[#5d6580]">
-                  {g.exams.length}
-                </span>
               </h3>
             ) : null}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

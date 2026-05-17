@@ -1,29 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import {
-  AlertCircle,
-  Calendar,
-  CheckSquare,
-  Clock,
-  Copy,
-  Edit3,
-  Eye,
-  Layers,
-  ListFilter,
-  Loader2,
-  MoreVertical,
-  Pencil,
-  Power,
-  RefreshCw,
-  Search,
-  Send,
-  Sparkles,
-  Square,
-  Timer,
-  Trash2,
-  Users,
-  X,
-} from "lucide-react"
+import { AlertCircle } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import ConfirmDialog from "../../components/student/ConfirmDialog"
 import RenameDialog from "../../components/ui/RenameDialog"
@@ -413,26 +390,21 @@ export default function TeacherPublishedExamsPage() {
           <button
             type="button"
             onClick={() => setRefreshKey((k) => k + 1)}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm font-semibold text-[#313a58] hover:bg-[#fafbff]"
+            className="inline-flex h-10 items-center rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm font-semibold text-[#313a58] hover:bg-[#fafbff]"
           >
-            <RefreshCw className="h-4 w-4" /> Refresh
+            Refresh
           </button>
-          <Link
-            to="/teacher-dashboard/generate-exam"
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#6562f1] px-4 text-sm font-semibold text-white hover:bg-[#5a56e2]"
-          >
-            <Send className="h-4 w-4" /> New exam
-          </Link>
+          
         </div>
       </div>
 
       {/* SUMMARY */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <SummaryCard label="Total" value={summary.total} accent="bg-[#f1efff] text-[#5f4ce6]" />
-        <SummaryCard label="Active" value={summary.active} accent="bg-[#e8fbf3] text-[#1f9d67]" />
-        <SummaryCard label="Upcoming" value={summary.upcoming} accent="bg-[#edf3ff] text-[#3f67c8]" />
-        <SummaryCard label="Expired" value={summary.expired} accent="bg-[#f1f3f8] text-[#5d6580]" />
-        <SummaryCard label="Unpublished" value={summary.unpublished} accent="bg-[#fff6e1] text-[#c89422]" />
+        <SummaryCard label="Total" value={summary.total} />
+        <SummaryCard label="Active" value={summary.active} />
+        <SummaryCard label="Upcoming" value={summary.upcoming} />
+        <SummaryCard label="Expired" value={summary.expired} />
+        <SummaryCard label="Unpublished" value={summary.unpublished} />
       </div>
 
       {toast ? (
@@ -491,17 +463,13 @@ export default function TeacherPublishedExamsPage() {
           />
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9aa3c2]" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search title / subject…"
-                className="h-10 w-56 rounded-xl border border-[#e3e6ef] bg-white pl-8 pr-3 text-sm focus:border-[#6562f1] focus:outline-none"
-              />
-            </div>
-            <div className="inline-flex items-center gap-1 rounded-xl border border-[#e3e6ef] bg-white px-2 py-1 text-xs text-[#5d6580]">
-              <ListFilter className="h-3.5 w-3.5" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search title / subject…"
+              className="h-10 w-56 rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm focus:border-[#6562f1] focus:outline-none"
+            />
+            <div className="inline-flex items-center rounded-xl border border-[#e3e6ef] bg-white px-2 py-1 text-xs text-[#5d6580]">
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
@@ -525,50 +493,40 @@ export default function TeacherPublishedExamsPage() {
             <button
               type="button"
               onClick={selectAllVisible}
-              className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#e3e6ef] bg-white px-2.5 text-xs font-semibold text-[#313a58] hover:bg-white/80"
+              className="ml-auto inline-flex h-8 items-center rounded-lg border border-[#e3e6ef] bg-white px-2.5 text-xs font-semibold text-[#313a58] hover:bg-white/80"
             >
-              {allVisibleSelected ? (
-                <>
-                  <Square className="h-3.5 w-3.5" /> Deselect visible
-                </>
-              ) : (
-                <>
-                  <CheckSquare className="h-3.5 w-3.5" /> Select visible ({visibleIds.length})
-                </>
-              )}
+              {allVisibleSelected ? "Deselect visible" : `Select visible (${visibleIds.length})`}
             </button>
             <button
               type="button"
               onClick={() => onBulkSetActive(true)}
               disabled={bulkBusy}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#e3e6ef] bg-white px-2.5 text-xs font-semibold text-[#1f9d67] hover:bg-white/80 disabled:opacity-60"
+              className="inline-flex h-8 items-center rounded-lg border border-[#e3e6ef] bg-white px-2.5 text-xs font-semibold text-[#1f9d67] hover:bg-white/80 disabled:opacity-60"
             >
-              {bulkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
-              Publish
+              {bulkBusy ? "Publishing…" : "Publish"}
             </button>
             <button
               type="button"
               onClick={() => onBulkSetActive(false)}
               disabled={bulkBusy}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#e3e6ef] bg-white px-2.5 text-xs font-semibold text-[#c89422] hover:bg-white/80 disabled:opacity-60"
+              className="inline-flex h-8 items-center rounded-lg border border-[#e3e6ef] bg-white px-2.5 text-xs font-semibold text-[#c89422] hover:bg-white/80 disabled:opacity-60"
             >
-              {bulkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
-              Unpublish
+              {bulkBusy ? "Unpublishing…" : "Unpublish"}
             </button>
             <button
               type="button"
               onClick={() => setPendingBulkDelete(true)}
               disabled={bulkBusy}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#fbd8d8] bg-white px-2.5 text-xs font-semibold text-[#c94a4a] hover:bg-red-50 disabled:opacity-60"
+              className="inline-flex h-8 items-center rounded-lg border border-[#fbd8d8] bg-white px-2.5 text-xs font-semibold text-[#c94a4a] hover:bg-red-50 disabled:opacity-60"
             >
-              <Trash2 className="h-3.5 w-3.5" /> Delete
+              Delete
             </button>
             <button
               type="button"
               onClick={clearSelection}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#e3e6ef] bg-white px-2.5 text-xs font-semibold text-[#5d6580] hover:bg-white/80"
+              className="inline-flex h-8 items-center rounded-lg border border-[#e3e6ef] bg-white px-2.5 text-xs font-semibold text-[#5d6580] hover:bg-white/80"
             >
-              <X className="h-3.5 w-3.5" /> Clear
+              Clear
             </button>
           </div>
         ) : null}
@@ -588,8 +546,8 @@ export default function TeacherPublishedExamsPage() {
             return (
               <article
                 key={p.id}
-                className={`rounded-2xl border bg-white p-4 shadow-sm transition ${
-                  selected ? "border-[#6562f1] ring-1 ring-[#6562f1]/30" : "border-[#e7eaf3]"
+                className={`rounded-2xl border bg-white p-4 shadow-sm ${
+                  selected ? "border-[#6562f1]" : "border-[#e7eaf3]"
                 }`}
               >
                 <div className="flex flex-wrap items-start gap-3">
@@ -621,10 +579,10 @@ export default function TeacherPublishedExamsPage() {
                     <button
                       type="button"
                       onClick={() => setMenuId(menuId === p.id ? null : p.id)}
-                      className="rounded-lg p-2 text-[#9aa3c2] hover:bg-[#f6f7fc]"
+                      className="rounded-lg border border-[#e3e6ef] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#5d6580] hover:bg-[#f6f7fc]"
                       aria-label="More actions"
                     >
-                      <MoreVertical className="h-4 w-4" />
+                      More
                     </button>
                     {menuId === p.id ? (
                       <>
@@ -635,41 +593,34 @@ export default function TeacherPublishedExamsPage() {
                           aria-label="Close menu"
                         />
                         <div className="absolute right-0 top-10 z-20 w-52 overflow-hidden rounded-xl border border-[#e7eaf3] bg-white py-1 text-sm shadow-[0_8px_30px_rgba(15,23,48,0.12)]">
-                          <MenuButton icon={Pencil} onClick={() => onRename(p)}>
-                            Rename
-                          </MenuButton>
-                          <MenuButton icon={Calendar} onClick={() => {
-                            setMenuId(null)
-                            setEditingPublished(p)
-                          }}>
+                          <MenuButton onClick={() => onRename(p)}>Rename</MenuButton>
+                          <MenuButton
+                            onClick={() => {
+                              setMenuId(null)
+                              setEditingPublished(p)
+                            }}
+                          >
                             Edit schedule
                           </MenuButton>
                           {status === STATUS.ACTIVE ? (
                             <>
-                              <MenuButton icon={Timer} onClick={() => onExtend(p, 15)}>
-                                Extend by 15 min
-                              </MenuButton>
-                              <MenuButton icon={Timer} onClick={() => onExtend(p, 60)}>
-                                Extend by 1 hour
-                              </MenuButton>
-                              <MenuButton icon={Timer} onClick={() => onExtend(p, 60 * 24)}>
-                                Extend by 1 day
-                              </MenuButton>
+                              <MenuButton onClick={() => onExtend(p, 15)}>Extend by 15 min</MenuButton>
+                              <MenuButton onClick={() => onExtend(p, 60)}>Extend by 1 hour</MenuButton>
+                              <MenuButton onClick={() => onExtend(p, 60 * 24)}>Extend by 1 day</MenuButton>
                             </>
                           ) : null}
-                          <MenuButton icon={Copy} onClick={() => onDuplicateTemplate(p)}>
+                          <MenuButton onClick={() => onDuplicateTemplate(p)}>
                             Duplicate &amp; reschedule
                           </MenuButton>
                           <Link
                             to={`/teacher-dashboard/exams/${p.generated_exam_id}/review`}
                             onClick={() => setMenuId(null)}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[#313a58] hover:bg-[#fafbff]"
+                            className="block w-full px-3 py-2 text-left text-[#313a58] hover:bg-[#fafbff]"
                           >
-                            <Eye className="h-3.5 w-3.5" /> Open template
+                            Open template
                           </Link>
                           <div className="my-1 border-t border-[#eef1f7]" />
                           <MenuButton
-                            icon={Trash2}
                             destructive
                             onClick={() => {
                               setMenuId(null)
@@ -684,56 +635,54 @@ export default function TeacherPublishedExamsPage() {
                   </div>
                 </div>
 
-                <dl className="mt-4 grid grid-cols-1 gap-2 text-sm text-[#5d6580] sm:grid-cols-2 lg:grid-cols-3">
-                  <Stat icon={Layers}>
+                <dl className="mt-4 grid grid-cols-1 gap-1.5 text-sm text-[#5d6580] sm:grid-cols-2">
+                  <div>
                     {p.total_questions ?? 0} questions · {p.total_marks ?? 0} marks
-                  </Stat>
-                  <Stat icon={Clock}>{p.duration_minutes} min allowed</Stat>
-                  <Stat icon={Users}>
+                  </div>
+                  <div>{p.duration_minutes} min allowed</div>
+                  <div>
                     {c.submitted}/{c.total || 0} submitted
-                  </Stat>
-                  <Stat icon={Calendar} cols="sm:col-span-2 lg:col-span-3">
+                  </div>
+                  <div className="sm:col-span-2">
                     {fmt(p.start_time)} → {fmt(p.end_time)}
-                  </Stat>
+                  </div>
                 </dl>
 
                 {/* PRIMARY ACTIONS */}
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
                     to={`/teacher-dashboard/submissions?published=${p.id}`}
-                    className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#151d3a] px-3 text-xs font-semibold text-white hover:bg-[#252f55]"
+                    className="inline-flex h-9 items-center rounded-xl bg-[#151d3a] px-3 text-xs font-semibold text-white hover:bg-[#252f55]"
                   >
-                    <Users className="h-3.5 w-3.5" />
                     View submissions ({c.submitted}/{c.total || 0})
                   </Link>
                   <button
                     type="button"
                     onClick={() => setEditingPublished(p)}
-                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-[#e3e6ef] bg-white px-3 text-xs font-semibold text-[#313a58] hover:bg-[#fafbff]"
+                    className="inline-flex h-9 items-center rounded-xl border border-[#e3e6ef] bg-white px-3 text-xs font-semibold text-[#313a58] hover:bg-[#fafbff]"
                   >
-                    <Edit3 className="h-3.5 w-3.5" /> Edit schedule
+                    Edit schedule
                   </button>
                   {p.is_active ? (
                     <button
                       type="button"
                       onClick={() => onUnpublish(p)}
-                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-[#ffe5bf] bg-white px-3 text-xs font-semibold text-[#c89422] hover:bg-[#fff8ec]"
+                      className="inline-flex h-9 items-center rounded-xl border border-[#ffe5bf] bg-white px-3 text-xs font-semibold text-[#c89422] hover:bg-[#fff8ec]"
                     >
-                      <Power className="h-3.5 w-3.5" /> Unpublish
+                      Unpublish
                     </button>
                   ) : (
                     <button
                       type="button"
                       onClick={() => onRepublish(p)}
-                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-[#cdebd9] bg-white px-3 text-xs font-semibold text-[#1f9d67] hover:bg-[#f0fbf6]"
+                      className="inline-flex h-9 items-center rounded-xl border border-[#cdebd9] bg-white px-3 text-xs font-semibold text-[#1f9d67] hover:bg-[#f0fbf6]"
                     >
-                      <Power className="h-3.5 w-3.5" />
                       {status === STATUS.EXPIRED ? "Reschedule & publish" : "Publish again"}
                     </button>
                   )}
                   {extending?.id === p.id ? (
-                    <span className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#f6f7fc] px-3 text-xs font-semibold text-[#5d6580]">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Extending…
+                    <span className="inline-flex h-9 items-center rounded-xl bg-[#f6f7fc] px-3 text-xs font-semibold text-[#5d6580]">
+                      Extending…
                     </span>
                   ) : null}
                 </div>
@@ -863,15 +812,13 @@ export default function TeacherPublishedExamsPage() {
 
 // ---------- SMALL COMPONENTS ----------
 
-function SummaryCard({ label, value, accent }) {
+function SummaryCard({ label, value }) {
   return (
     <div className="rounded-2xl border border-[#e7eaf3] bg-white p-3 shadow-sm">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9aa3c2]">
         {label}
       </p>
-      <div className={`mt-1 inline-flex items-center rounded-lg px-2 py-1 text-base font-bold ${accent}`}>
-        {value}
-      </div>
+      <p className="mt-1 text-xl font-bold text-[#151d3a]">{value}</p>
     </div>
   )
 }
@@ -890,48 +837,31 @@ function FilterChip({ active, onClick, label, count, tone = "default" }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition ${
+      className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold ${
         active
-          ? `${toneClass} ring-2 ring-current/20`
+          ? toneClass
           : "border-[#e3e6ef] bg-white text-[#5d6580] hover:bg-[#fafbff]"
       }`}
     >
-      <Sparkles className={`h-3 w-3 ${active ? "opacity-80" : "opacity-30"}`} />
       {label}
-      <span
-        className={`inline-flex min-w-[1.25rem] justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-          active ? "bg-white/70" : "bg-[#eef1f7] text-[#5d6580]"
-        }`}
-      >
-        {count}
-      </span>
+      <span className="text-[#9aa3c2]">({count})</span>
     </button>
   )
 }
 
-function MenuButton({ icon: Icon, children, onClick, destructive }) {
+function MenuButton({ children, onClick, destructive }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
+      className={`block w-full px-3 py-2 text-left text-sm ${
         destructive
           ? "text-[#c94a4a] hover:bg-red-50"
           : "text-[#313a58] hover:bg-[#fafbff]"
       }`}
     >
-      <Icon className="h-3.5 w-3.5" />
       {children}
     </button>
-  )
-}
-
-function Stat({ icon: Icon, children, cols = "" }) {
-  return (
-    <div className={`flex items-center gap-2 ${cols}`}>
-      <Icon className="h-4 w-4 shrink-0 text-[#8a93ad]" />
-      <span className="min-w-0 truncate">{children}</span>
-    </div>
   )
 }
 

@@ -23,6 +23,7 @@ export default function ManualQuestionModal({
   isEdit,
   form,
   categories,
+  sourceOptions = null,
   saving,
   onChange,
   onSubmit,
@@ -71,6 +72,22 @@ export default function ManualQuestionModal({
         </div>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+          {sourceOptions?.length ? (
+            <label className="block text-sm">
+              <span className="text-[#5d6580]">Add to source</span>
+              <select
+                value={form.source_note_title || sourceOptions[0]}
+                onChange={(e) => onChange((f) => ({ ...f, source_note_title: e.target.value }))}
+                className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm outline-none focus:border-[#6562f1]"
+              >
+                {sourceOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-sm">
               <span className="text-[#5d6580]">Type</span>

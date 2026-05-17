@@ -280,6 +280,26 @@ export function snapshotGenerationConfig(cfg) {
   }
 }
 
+/** Bank tab: true when no target is set, or selected marks equal the target. */
+export function bankTargetMarksBalanced(selectedMarks, targetMarksVal) {
+  const target = parseCfgPositive(targetMarksVal)
+  if (!target) return true
+  return (Number(selectedMarks) || 0) === target
+}
+
+/** Bank tab: user-facing message when a target is set but selection does not match. */
+export function bankTargetMarksBalanceMessage(selectedMarks, targetMarksVal) {
+  const target = parseCfgPositive(targetMarksVal)
+  if (!target) return null
+  const selected = Number(selectedMarks) || 0
+  if (selected === target) return null
+  const diff = Math.abs(target - selected)
+  if (selected < target) {
+    return `${diff} mark${diff === 1 ? "" : "s"} short of target — adjust your selection to compile`
+  }
+  return `${diff} mark${diff === 1 ? "" : "s"} over target — adjust your selection to compile`
+}
+
 /** Bank tab: progress of selected question marks vs target total. */
 export function computeBankMarksProgress(selectedMarks, targetMarksVal) {
   const target = parseCfgPositive(targetMarksVal)

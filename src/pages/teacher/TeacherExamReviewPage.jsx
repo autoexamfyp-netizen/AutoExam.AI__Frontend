@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   AlertCircle,
   ArrowLeft,
-  CheckCircle2,
   Clock,
   Copy,
   Edit3,
@@ -18,9 +17,38 @@ import {
 import EmptyState from "../../components/student/EmptyState"
 import ConfirmDialog from "../../components/student/ConfirmDialog"
 import PublishExamModal from "../../components/exam/PublishExamModal"
-import { deleteExam, duplicateExam, fetchExam, updateExam } from "../../services/examService"
+import PostGenQuestionCard from "../../components/exam/postGen/PostGenQuestionCard"
+import {
+  buildQuestionPayloadFromManualForm,
+  emptyManualQuestionForm,
+} from "../../components/questions/ManualQuestionModal"
+import { deleteExam, duplicateExam, fetchExam, unlinkQuestionFromExam, updateExam } from "../../services/examService"
+import { deleteQuestion, updateQuestion } from "../../services/questionService"
 import { API_BASE } from "../../services/apiClient"
 import { displayExamTitle } from "../../utils/examTitle"
+import { mcqFieldsFromQuestion } from "../../utils/mcqOptions"
+
+function buildExamPatchFromQuestions(questions) {
+  const total_marks = questions.reduce((s, q) => s + (Number(q.marks) || 0), 0)
+  const diffs = new Set(questions.map((q) => (q.difficulty || "medium").toLowerCase()))
+  let difficulty = "mixed"
+  if (diffs.size === 1) difficulty = [...diffs][0]
+  return { total_marks, difficulty }
+}
+
+function manualFormFromQuestion(q) {
+  return {
+    ...emptyManualQuestionForm(q.category_id || ""),
+    prompt: q.prompt || "",
+    model_answer: q.model_answer || "",
+    question_type: q.question_type || "short",
+    difficulty: q.difficulty || "medium",
+    marks: Number(q.marks) || 2,
+    topic: q.topic || "",
+    category_id: q.category_id || "",
+    ...(q.question_type === "mcq" ? mcqFieldsFromQuestion(q) : {}),
+  }
+}
 
 export default function TeacherExamReviewPage() {
   const { examId } = useParams()
@@ -38,6 +66,11 @@ export default function TeacherExamReviewPage() {
   const [duplicating, setDuplicating] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [deleteQuestionTarget, setDeleteQuestionTarget] = useState(null)
+  const [deletingQuestion, setDeletingQuestion] = useState(false)
+  const [inlineEditId, setInlineEditId] = useState(null)
+  const [inlineEditForm, setInlineEditForm] = useState(null)
+  const [inlineEditSaving, setInlineEditSaving] = useState(false)
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -160,6 +193,84 @@ export default function TeacherExamReviewPage() {
     } finally {
       setDeleting(false)
       setDeleteOpen(false)
+    }
+  }
+
+  const startInlineEdit = (q) => {
+    setError("")
+    setInlineEditId(q.id)
+    setInlineEditForm(manualFormFromQuestion(q))
+  }
+
+  const cancelInlineEdit = () => {
+    if (inlineEditSaving) return
+    setInlineEditId(null)
+    setInlineEditForm(null)
+  }
+
+  const saveInlineEdit = async () => {
+    if (!inlineEditForm || !inlineEditId || inlineEditSaving || !exam) return
+    if (!inlineEditForm.prompt.trim()) {
+      setError("Question text is required.")
+      return
+    }
+    let payload
+    try {
+      payload = buildQuestionPayloadFromManualForm(inlineEditForm)
+    } catch (err) {
+      setError(err?.message || "Invalid question.")
+      return
+    }
+    setInlineEditSaving(true)
+    setError("")
+    try {
+      const row = await updateQuestion(inlineEditId, payload)
+      const nextQuestions = questions.map((x) => (x.id === row.id ? row : x))
+      const patch = buildExamPatchFromQuestions(nextQuestions)
+      const updatedExam = await updateExam(exam.id, patch)
+      setQuestions(nextQuestions)
+      setExam((curr) => ({
+        ...curr,
+        ...updatedExam,
+        ...patch,
+        total_questions: nextQuestions.length,
+      }))
+      setInlineEditId(null)
+      setInlineEditForm(null)
+    } catch (e) {
+      setError(e?.message || "Could not save question.")
+    } finally {
+      setInlineEditSaving(false)
+    }
+  }
+
+  const onConfirmDeleteQuestion = async () => {
+    if (!deleteQuestionTarget || deletingQuestion || !exam) return
+    const { question } = deleteQuestionTarget
+    setDeletingQuestion(true)
+    setError("")
+    try {
+      await unlinkQuestionFromExam(exam.id, question.id)
+      await deleteQuestion(question.id)
+      const nextQuestions = questions.filter((q) => q.id !== question.id)
+      const patch = buildExamPatchFromQuestions(nextQuestions)
+      const updatedExam = await updateExam(exam.id, patch)
+      setQuestions(nextQuestions)
+      setExam((curr) => ({
+        ...curr,
+        ...updatedExam,
+        ...patch,
+        total_questions: nextQuestions.length,
+      }))
+      if (inlineEditId === question.id) {
+        setInlineEditId(null)
+        setInlineEditForm(null)
+      }
+    } catch (e) {
+      setError(e?.message || "Could not remove question.")
+    } finally {
+      setDeletingQuestion(false)
+      setDeleteQuestionTarget(null)
     }
   }
 
@@ -294,6 +405,27 @@ export default function TeacherExamReviewPage() {
         cancelLabel="Keep"
         onConfirm={onConfirmDelete}
         onCancel={() => !deleting && setDeleteOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteQuestionTarget)}
+        title="Remove this question?"
+        destructive
+        busy={deletingQuestion}
+        message={
+          deleteQuestionTarget ? (
+            <p>
+              <strong className="text-[#151d3a]">
+                Q{questions.findIndex((q) => q.id === deleteQuestionTarget.question.id) + 1}
+              </strong>{" "}
+              will be removed from this exam and deleted from your question bank.
+            </p>
+          ) : null
+        }
+        confirmLabel="Remove"
+        cancelLabel="Keep"
+        onConfirm={onConfirmDeleteQuestion}
+        onCancel={() => !deletingQuestion && setDeleteQuestionTarget(null)}
       />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -450,44 +582,23 @@ export default function TeacherExamReviewPage() {
             </div>
           </div>
         </div>
-      ) : (
-        <div className="flex items-center gap-2 rounded-xl border border-[#cdebd9] bg-[#e8fbf3] px-4 py-3 text-sm font-medium text-[#1f9d67]">
-          <CheckCircle2 className="h-4 w-4" />
-          Ready to publish — set the schedule in the next step.
-        </div>
-      )}
+      ) : null}
 
       <div className="space-y-3">
         {questions.map((q, idx) => (
-          <article key={q.id} className="rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#eef1f7] font-bold text-[#3e4768]">
-                {idx + 1}
-              </span>
-              <span className="rounded-lg bg-[#f1efff] px-2 py-0.5 font-semibold text-[#5f4ce6]">
-                {q.question_type?.toUpperCase?.() || "—"}
-              </span>
-              <span className="text-[#7f88a6]">{q.difficulty || "medium"}</span>
-              <span className="text-[#7f88a6]">{q.marks} marks</span>
-              {q.topic ? <span className="text-[#7f88a6]">{q.topic}</span> : null}
-            </div>
-            <p className="mt-2 whitespace-pre-wrap text-sm font-medium text-[#1a2341]">{q.prompt}</p>
-            {q.question_type === "mcq" && Array.isArray(q.options) ? (
-              <ul className="mt-2 space-y-1 text-sm text-[#5d6580]">
-                {q.options.map((o, optIdx) => (
-                  <li key={o} className="rounded-lg bg-[#fafbff] px-3 py-1.5">
-                    {String.fromCharCode(65 + optIdx)}. {o}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {q.model_answer ? (
-              <details className="mt-3 rounded-xl border border-[#eef1f7] bg-[#fafbff] px-3 py-2 text-sm">
-                <summary className="cursor-pointer font-semibold text-[#6562f1]">Model answer</summary>
-                <p className="mt-2 whitespace-pre-wrap text-[#5d6580]">{q.model_answer}</p>
-              </details>
-            ) : null}
-          </article>
+          <PostGenQuestionCard
+            key={q.id}
+            index={idx}
+            question={q}
+            editing={inlineEditId === q.id}
+            form={inlineEditId === q.id ? inlineEditForm : null}
+            saving={inlineEditSaving}
+            onEdit={() => startInlineEdit(q)}
+            onDelete={() => setDeleteQuestionTarget({ question: q })}
+            onCancelEdit={cancelInlineEdit}
+            onChangeForm={setInlineEditForm}
+            onSaveEdit={saveInlineEdit}
+          />
         ))}
       </div>
 

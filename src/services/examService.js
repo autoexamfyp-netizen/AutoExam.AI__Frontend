@@ -78,6 +78,7 @@ export async function createExam({
  * @param {string} [args.content]   required if mode === 'from-content'
  * @param {{ targetMcq:number, targetShort:number, targetEssay:number, difficulty?:string }} args.examConfig
  * @param {string[]} [args.sourceQuestionIds]  restrict bank candidates
+ * @param {boolean} [args.questionsOnly]  return questions without creating an exam
  */
 export async function generateExam(args) {
   console.log("🪄 Composing exam with AI...", args)

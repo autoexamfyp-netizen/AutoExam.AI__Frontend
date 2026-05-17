@@ -1,9 +1,8 @@
-import { useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 import {
   CheckSquare,
   Cpu,
   Folder,
-  Inbox,
   Layers,
   Loader2,
   RefreshCw,
@@ -13,17 +12,19 @@ import {
 } from "lucide-react"
 import ConfirmDialog from "../student/ConfirmDialog"
 import QuestionList from "../questions/QuestionList"
+import StatPill from "../shared/StatPill"
+import RequiredMark from "../shared/RequiredMark"
+import FieldError from "../shared/FieldError"
+import NumericField, { inputStateClass } from "../shared/NumericField"
 import { deleteQuestions } from "../../services/questionService"
 import {
-  computeBankCompileHint,
-  computeBankMarksProgress,
+  bankTargetMarksBalanceMessage,
   digitsOnly,
-  getCountValue,
+  parseCfgPositive,
 } from "../../utils/examConfig"
 import { sanitizeExamTitleInput } from "../../utils/examTitle"
 
 const ALL_ID = "__all__"
-const UNCAT_ID = "__uncategorized__"
 
 function classNames(...xs) {
   return xs.filter(Boolean).join(" ")
@@ -31,7 +32,7 @@ function classNames(...xs) {
 
 /** Resolve a human-readable subject label — never show raw category IDs. */
 function resolveSubjectTitle(categoryId, categories, nestedCategory) {
-  if (!categoryId || categoryId === UNCAT_ID) return "Uncategorized"
+  if (!categoryId) return "Unnamed Subject"
   const match = categories.find((c) => String(c.id) === String(categoryId))
   const candidate = String(match?.title ?? nestedCategory?.title ?? "").trim()
   if (!candidate || candidate === String(categoryId)) return "Unnamed Subject"
@@ -62,345 +63,205 @@ function SubjectItem({ icon: Icon, label, count, active, onClick }) {
   )
 }
 
-function BankNumericField({ label, value, placeholder, disabled, onChange, onBlur, inputRef }) {
-  return (
-    <label className="text-xs">
-      <span className="text-[#5d6580]">{label}</span>
-      <input
-        ref={inputRef}
-        type="text"
-        inputMode="numeric"
-        disabled={disabled}
-        placeholder={placeholder}
-        className="mt-1 h-9 w-full rounded-lg border border-[#e3e6ef] bg-white px-2 text-sm outline-none focus:border-[#6562f1] disabled:bg-[#f6f7fc] disabled:text-[#9aa3c2]"
-        value={value}
-        onChange={(e) => onChange(digitsOnly(e.target.value))}
-        onBlur={onBlur}
-      />
-    </label>
-  )
+function bankTargetMarksComparison(selectedMarks, targetMarksVal) {
+  const target = parseCfgPositive(targetMarksVal)
+  if (!target) return null
+  const selected = Number(selectedMarks) || 0
+  if (selected === target) {
+    return { text: "Target reached", className: "text-emerald-700" }
+  }
+  if (selected < target) {
+    return {
+      text: `${target - selected} marks short of target`,
+      className: "text-amber-700",
+    }
+  }
+  return {
+    text: `${selected - target} marks over target`,
+    className: "text-amber-700",
+  }
+}
+
+function bankBlockingErrors(blockingErrors) {
+  if (!blockingErrors?.length) return []
+  return blockingErrors.filter((msg) => {
+    const lower = msg.toLowerCase()
+    if (lower.includes("at least one question type")) return false
+    if (lower.includes("marks per")) return false
+    if (lower.includes("maximum") && (lower.includes("mcq") || lower.includes("short") || lower.includes("essay"))) {
+      return false
+    }
+    if (lower.includes("breakdown totals") || lower.includes("do not add up")) return false
+    return true
+  })
 }
 
 function BankExamSetupPanel({
   cfg,
   onChangeCfg,
   validation,
+  configSubmitAttempted,
+  canCompile,
+  compileDisabledTooltip,
   selectedSummary,
-  pickedCount,
   compiling,
   onCompile,
   onOpenAddManual,
 }) {
   const [touched, setTouched] = useState({})
-  const marksMcqRef = useRef(null)
-  const marksShortRef = useRef(null)
-  const marksEssayRef = useRef(null)
   const touch = (key) => setTouched((t) => ({ ...t, [key]: true }))
+  const showErr = (key, error) => (touched[key] || configSubmitAttempted ? error : null)
   const patch = (key, val) => onChangeCfg((c) => ({ ...c, [key]: val }))
 
   const titleLen = cfg.title.length
-  const titleEmpty = !cfg.title.trim()
-  const canCompile = pickedCount > 0 && !titleEmpty
-
-  const targetMarksSet = String(cfg.targetTotalMarks ?? "").trim().length > 0
-  const hasTypeTargets =
-    getCountValue(cfg.targetMcq) + getCountValue(cfg.targetShort) + getCountValue(cfg.targetEssay) > 0
-
-  const mcqN = validation.mcqCount?.value ?? 0
-  const shortN = validation.shortCount?.value ?? 0
-  const essayN = validation.essayCount?.value ?? 0
-
-  const marksProgress =
-    targetMarksSet && pickedCount > 0
-      ? computeBankMarksProgress(selectedSummary.marks, cfg.targetTotalMarks)
-      : null
-
-  const compileHint = targetMarksSet
-    ? computeBankCompileHint(selectedSummary.marks, cfg.targetTotalMarks)
-    : null
-
-  const handleCountChange = (countKey, marksKey, marksRef, raw) => {
-    const prev = getCountValue(cfg[countKey])
-    onChangeCfg((c) => {
-      const next = { ...c, [countKey]: raw }
-      if (getCountValue(raw) === 0) next[marksKey] = ""
-      return next
-    })
-    if (prev === 0 && getCountValue(raw) > 0) {
-      setTimeout(() => marksRef.current?.focus(), 0)
-    }
-  }
-
-  const blurCount = (key, max) => {
-    touch(key)
-    let v = String(cfg[key] ?? "").trim()
-    if (!v) v = "0"
-    const n = Number(v)
-    if (Number.isFinite(n) && n > max) v = String(max)
-    else if (!Number.isFinite(n) || n < 0) v = "0"
-    const marksKey = { targetMcq: "marksMcq", targetShort: "marksShort", targetEssay: "marksEssay" }[key]
-    onChangeCfg((c) => {
-      const next = { ...c, [key]: v }
-      if (getCountValue(v) === 0) next[marksKey] = ""
-      return next
-    })
-  }
-
-  const typeLine = (label, selected, target) => {
-    if (hasTypeTargets && target > 0) {
-      return (
-        <p key={label} className="text-[11px] text-[#5d6580]">
-          {label}: {selected} selected <span className="text-[#9aa3c2]">(target ~{target})</span>
-        </p>
-      )
-    }
-    return (
-      <p key={label} className="text-[11px] text-[#5d6580]">
-        {label}: {selected} selected
-      </p>
-    )
-  }
-
-  const compileTitle = !canCompile
-    ? titleEmpty
-      ? "Enter an exam title to compile"
-      : "Select at least one question to compile"
-    : undefined
+  const titleFilled = validation.title.valid && titleLen >= 3
+  const targetMarksInput = String(cfg.targetTotalMarks ?? "").trim()
+  const targetComparison = bankTargetMarksComparison(selectedSummary.marks, cfg.targetTotalMarks)
+  const marksBalanceMessage = bankTargetMarksBalanceMessage(
+    selectedSummary.marks,
+    cfg.targetTotalMarks,
+  )
+  const panelBlockingErrors = bankBlockingErrors(validation.blockingErrors)
 
   return (
-    <section className="flex h-full flex-col rounded-2xl border border-[#e7eaf3] bg-white shadow-sm">
-      <div className="shrink-0 border-b border-[#eef1f7] p-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-[#151d3a]">
-          <Cpu className="h-4 w-4 text-[#6562f1]" />
-          Exam setup
-        </div>
+    <section className="flex h-full max-h-[640px] flex-col rounded-2xl border border-[#e7eaf3] bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-sm font-semibold text-[#151d3a]">
+        <Cpu className="h-4 w-4 text-[#6562f1]" />
+        Exam setup
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
         <label className="block text-sm">
-          <span className="text-[#5d6580]">
-            Total marks for this exam
-          </span>
+          <span className="text-[#5d6580]">Total marks for this exam</span>
           <input
             type="text"
             inputMode="numeric"
+            autoComplete="off"
             placeholder="e.g. 50"
-            className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
+            className={inputStateClass({
+              error: Boolean(
+                targetMarksInput &&
+                  showErr("targetTotalMarks", validation.target?.error),
+              ),
+              valid: Boolean(targetMarksInput && validation.target?.valid),
+              disabled: false,
+            })}
             value={cfg.targetTotalMarks}
             onChange={(e) => patch("targetTotalMarks", digitsOnly(e.target.value))}
             onBlur={() => touch("targetTotalMarks")}
           />
+          <FieldError
+            message={
+              targetMarksInput
+                ? showErr("targetTotalMarks", validation.target?.error)
+                : null
+            }
+          />
         </label>
 
-        <label className="block text-sm">
+        <label className="mt-3 block text-sm">
           <span className="text-[#5d6580]">
-            Exam title <span className="text-red-500">*</span>
+            Exam title
+            <RequiredMark />
           </span>
-          <div className="relative mt-1">
+          <div className="relative">
             <input
               type="text"
               maxLength={80}
+              autoComplete="off"
               placeholder="e.g. Discrete Math Midterm"
-              className="h-11 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
+              className={inputStateClass({
+                error: Boolean(showErr("title", validation.title.error)),
+                valid: titleFilled,
+                disabled: false,
+              })}
               value={cfg.title}
               onChange={(e) => patch("title", sanitizeExamTitleInput(e.target.value))}
               onBlur={() => touch("title")}
             />
-            <span className="pointer-events-none absolute bottom-2.5 right-3 text-[11px] text-[#9aa3c2]">
+            <span className="pointer-events-none absolute bottom-2 right-3 text-[11px] text-[#9aa3c2]">
               {titleLen} / 80
             </span>
           </div>
-          {touched.title && validation.title.error ? (
-            <p className="mt-1 text-xs text-red-600">{validation.title.error}</p>
-          ) : null}
+          <FieldError message={showErr("title", validation.title.error)} />
         </label>
 
-        <label className="block text-sm">
-          <span className="text-[#5d6580]">
-            Duration (min) <span className="text-red-500">*</span>
-          </span>
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="e.g. 60"
-            className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] px-3 text-sm outline-none focus:border-[#6562f1]"
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <NumericField
+            label="Duration (min)"
+            required
             value={cfg.durationMinutes}
-            onChange={(e) => patch("durationMinutes", digitsOnly(e.target.value))}
+            placeholder="e.g. 60"
+            error={showErr("durationMinutes", validation.duration.error)}
+            valid={validation.duration.valid}
+            onChange={(v) => patch("durationMinutes", v)}
             onBlur={() => touch("durationMinutes")}
           />
-        </label>
-
-        <label className="block text-sm">
-          <span className="text-[#5d6580]">Difficulty level</span>
-          <select
-            className="mt-1 h-11 w-full rounded-xl border border-[#e3e6ef] bg-white px-3 text-sm outline-none focus:border-[#6562f1]"
-            value={cfg.difficulty}
-            onChange={(e) => patch("difficulty", e.target.value)}
-          >
-            <option value="easy">Easy</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-            <option value="mixed">Mixed</option>
-          </select>
-        </label>
-
-        <div className="space-y-2 border-t border-[#eef1f7] pt-3">
-          <p className="text-xs font-semibold text-[#151d3a]">Target question breakdown</p>
-          <div className="grid grid-cols-3 gap-2">
-            <BankNumericField
-              label="MCQs"
-              value={cfg.targetMcq}
-              placeholder="e.g. 5"
-              onChange={(v) => handleCountChange("targetMcq", "marksMcq", marksMcqRef, v)}
-              onBlur={() => blurCount("targetMcq", 50)}
-            />
-            <BankNumericField
-              label="Short"
-              value={cfg.targetShort}
-              placeholder="e.g. 3"
-              onChange={(v) => handleCountChange("targetShort", "marksShort", marksShortRef, v)}
-              onBlur={() => blurCount("targetShort", 30)}
-            />
-            <BankNumericField
-              label="Essay"
-              value={cfg.targetEssay}
-              placeholder="e.g. 2"
-              onChange={(v) => handleCountChange("targetEssay", "marksEssay", marksEssayRef, v)}
-              onBlur={() => blurCount("targetEssay", 10)}
-            />
-          </div>
-
-          {targetMarksSet && hasTypeTargets && validation.allocation ? (
-            <p
-              className={`text-xs ${
-                validation.allocation.type === "over" ? "text-amber-700" : "text-emerald-700"
-              }`}
+          <label className="text-sm">
+            <span className="text-[#5d6580]">Difficulty level</span>
+            <select
+              className={inputStateClass({
+                error: false,
+                valid: Boolean(cfg.difficulty),
+                disabled: false,
+              })}
+              value={cfg.difficulty}
+              onChange={(e) => patch("difficulty", e.target.value)}
             >
-              {validation.allocation.type === "remaining" ? (
-                <>{validation.allocation.amount} marks remaining to allocate</>
-              ) : validation.allocation.type === "balanced" ? (
-                <>Marks balanced perfectly</>
-              ) : (
-                <>
-                  {validation.allocation.amount} marks over your target ({validation.allocation.target})
-                </>
-              )}
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+              <option value="mixed">Mixed</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-3 rounded-xl border border-[#e7eaf3] bg-[#fafbff] p-3 text-xs text-[#5d6580]">
+          <p className="font-semibold text-[#151d3a]">Selected from bank</p>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <StatPill label="TOTAL" value={selectedSummary.total} />
+            <StatPill label="MCQ" value={selectedSummary.mcq} />
+            <StatPill label="SHORT" value={selectedSummary.short} />
+            <StatPill label="ESSAY" value={selectedSummary.essay} />
+          </div>
+          <p className="mt-2 font-medium text-[#3e4768]">{selectedSummary.marks} marks total</p>
+          {targetComparison ? (
+            <p className={`mt-1.5 text-xs font-medium ${targetComparison.className}`}>
+              {targetComparison.text}
             </p>
           ) : null}
-
-          <div className="grid grid-cols-3 gap-2">
-            <BankNumericField
-              label="Marks per MCQ"
-              value={mcqN > 0 ? cfg.marksMcq : ""}
-              placeholder={mcqN > 0 ? "e.g. 2" : "-"}
-              disabled={mcqN === 0}
-              inputRef={marksMcqRef}
-              onChange={(v) => patch("marksMcq", v)}
-              onBlur={() => touch("marksMcq")}
-            />
-            <BankNumericField
-              label="Marks per Short"
-              value={shortN > 0 ? cfg.marksShort : ""}
-              placeholder={shortN > 0 ? "e.g. 4" : "-"}
-              disabled={shortN === 0}
-              inputRef={marksShortRef}
-              onChange={(v) => patch("marksShort", v)}
-              onBlur={() => touch("marksShort")}
-            />
-            <BankNumericField
-              label="Marks per Essay"
-              value={essayN > 0 ? cfg.marksEssay : ""}
-              placeholder={essayN > 0 ? "e.g. 10" : "-"}
-              disabled={essayN === 0}
-              inputRef={marksEssayRef}
-              onChange={(v) => patch("marksEssay", v)}
-              onBlur={() => touch("marksEssay")}
-            />
-          </div>
         </div>
 
-        <div className="border-t border-[#eef1f7] pt-3">
-          <p className="text-xs font-semibold text-[#151d3a]">Selected from bank</p>
-          <div className="mt-2 grid grid-cols-4 gap-2 text-center">
-            {[
-              ["TOTAL", selectedSummary.total],
-              ["MCQ", selectedSummary.mcq],
-              ["SHORT", selectedSummary.short],
-              ["ESSAY", selectedSummary.essay],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-lg bg-[#fafbff] px-1 py-2 ring-1 ring-[#e7eaf3]">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9aa3c2]">{label}</p>
-                <p className="mt-0.5 text-sm font-bold text-[#151d3a]">{value}</p>
-              </div>
-            ))}
+        {configSubmitAttempted && marksBalanceMessage ? (
+          <div className="mt-3">
+            <FieldError message={marksBalanceMessage} />
           </div>
-          <p className="mt-2 text-xs font-medium text-[#3e4768]">{selectedSummary.marks} marks total</p>
-
-          {marksProgress ? (
-            <div className="mt-3 space-y-1.5">
-              <p className="text-[11px] font-semibold text-[#5d6580]">Marks progress:</p>
-              <p className="font-mono text-[11px] leading-tight text-[#3e4768]">
-                {marksProgress.bar}{" "}
-                <span className="font-sans font-semibold">
-                  {marksProgress.selected} / {marksProgress.target} marks
-                </span>
-              </p>
-              <p
-                className={`text-xs font-medium ${
-                  marksProgress.status === "over" ? "text-amber-700" : "text-emerald-700"
-                }`}
-              >
-                {marksProgress.status === "over" ? (
-                  <>
-                    &#9888; {marksProgress.selected - marksProgress.target} marks over your target
-                  </>
-                ) : marksProgress.status === "exact" ? (
-                  <>&#10003; Target reached perfectly</>
-                ) : (
-                  <>{marksProgress.diff} marks remaining to reach your target</>
-                )}
-              </p>
-              <div className="mt-1 space-y-0.5">
-                {typeLine("MCQ", selectedSummary.mcq, mcqN)}
-                {typeLine("Short", selectedSummary.short, shortN)}
-                {typeLine("Essay", selectedSummary.essay, essayN)}
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        {compileHint ? (
-          <p
-            className={`text-xs font-medium ${
-              compileHint.type === "ready"
-                ? "text-emerald-700"
-                : compileHint.type === "over"
-                  ? "text-amber-700"
-                  : "text-[#5d6580]"
-            }`}
-          >
-            {compileHint.type === "ready" ? (
-              <>&#10003; {compileHint.message}</>
-            ) : compileHint.type === "over" ? (
-              <>&#9888; {compileHint.message}</>
-            ) : (
-              compileHint.message
-            )}
-          </p>
         ) : null}
 
-        <button
-          type="button"
-          disabled={compiling || !canCompile}
-          title={compileTitle}
-          onClick={onCompile}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-sm font-semibold text-white transition hover:bg-[#5a56e2] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {compiling ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-          {compiling ? "Compiling exam…" : "Compile exam from selected"}
-        </button>
+        {configSubmitAttempted && panelBlockingErrors.length > 0 ? (
+          <div className="mt-3 space-y-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+            {panelBlockingErrors.map((msg) => (
+              <p key={msg} className="text-xs text-red-700">
+                {msg}
+              </p>
+            ))}
+          </div>
+        ) : null}
 
-        <div className="border-t border-[#eef1f7] pt-3">
+        <div className="mt-4 space-y-2">
+          <button
+            type="button"
+            disabled={compiling || !canCompile}
+            title={compileDisabledTooltip}
+            onClick={onCompile}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6562f1] text-sm font-semibold text-white transition hover:bg-[#5a56e2] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {compiling ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+            {compiling ? "Compiling exam…" : "Compile exam from selected"}
+          </button>
+        </div>
+
+        <div className="mt-3 border-t border-[#eef1f7] pt-3">
           <button
             type="button"
             onClick={onOpenAddManual}
@@ -424,6 +285,9 @@ export default function FromExistingQuestionsTab({
   cfg,
   setCfg,
   validation,
+  configSubmitAttempted = false,
+  canCompile = false,
+  compileDisabledTooltip,
   compiling,
   onCompile,
   onOpenAddManual,
@@ -467,8 +331,7 @@ export default function FromExistingQuestionsTab({
   const filteredQuestions = useMemo(() => {
     const qLower = query.trim().toLowerCase()
     return bank.filter((item) => {
-      if (activeSubject === UNCAT_ID && item.category_id !== null) return false
-      if (activeSubject !== ALL_ID && activeSubject !== UNCAT_ID && item.category_id !== activeSubject) {
+      if (activeSubject !== ALL_ID && item.category_id !== activeSubject) {
         return false
       }
       if (difficultyFilter !== "all" && item.difficulty !== difficultyFilter) return false
@@ -503,8 +366,7 @@ export default function FromExistingQuestionsTab({
   const allVisibleSelected =
     visibleQuestionIds.length > 0 && visibleQuestionIds.every((id) => picked.has(id))
 
-  const manualCategoryId =
-    activeSubject !== ALL_ID && activeSubject !== UNCAT_ID ? activeSubject : ""
+  const manualCategoryId = activeSubject !== ALL_ID ? activeSubject : ""
 
   const togglePick = (question) => {
     setPicked((prev) => {
@@ -560,16 +422,9 @@ export default function FromExistingQuestionsTab({
             active={activeSubject === ALL_ID}
             onClick={() => setActiveSubject(ALL_ID)}
           />
-          <SubjectItem
-            icon={Inbox}
-            label="Uncategorized"
-            count={bank.filter((q) => !q.category_id).length}
-            active={activeSubject === UNCAT_ID}
-            onClick={() => setActiveSubject(UNCAT_ID)}
-          />
           <div className="my-2 border-t border-[#eef1f7]" />
           {subjects
-            .filter((s) => s.id !== UNCAT_ID && s.questionCount > 0)
+            .filter((s) => s.questionCount > 0)
             .map((s) => (
               <SubjectItem
                 key={s.id}
@@ -687,8 +542,10 @@ export default function FromExistingQuestionsTab({
         cfg={cfg}
         onChangeCfg={setCfg}
         validation={validation}
+        configSubmitAttempted={configSubmitAttempted}
+        canCompile={canCompile}
+        compileDisabledTooltip={compileDisabledTooltip}
         selectedSummary={selectedSummary}
-        pickedCount={picked.size}
         compiling={compiling}
         onCompile={onCompile}
         onOpenAddManual={() => onOpenAddManual(manualCategoryId)}

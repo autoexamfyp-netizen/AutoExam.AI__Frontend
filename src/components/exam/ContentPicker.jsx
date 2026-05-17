@@ -23,8 +23,8 @@ function relative(when) {
  *                category?:{id:string,title:string},updated_at?:string}>} props.materials
  * @param {string|null} props.activeCategoryId   Category filter ('__all__'|<uuid>)
  * @param {(id: string) => void} props.onChangeCategory
- * @param {string|null} props.activeMaterialId
- * @param {(material: object) => void} props.onSelectMaterial
+ * @param {Set<string>} props.selectedMaterialIds
+ * @param {(material: object) => void} props.onToggleMaterial
  * @param {Map<string, number>} [props.questionCounts]   text_material_id → question count
  * @param {string} [props.prefillFromTitle]  Banner when opened via ?noteId=
  */
@@ -33,8 +33,8 @@ export default function ContentPicker({
   materials,
   activeCategoryId,
   onChangeCategory,
-  activeMaterialId,
-  onSelectMaterial,
+  selectedMaterialIds = new Set(),
+  onToggleMaterial,
   questionCounts,
   loading,
   prefillFromTitle,
@@ -50,6 +50,14 @@ export default function ContentPicker({
         (m.content || "").toLowerCase().includes(q),
     )
   }, [materials, query])
+
+  const selectedCount = selectedMaterialIds.size
+  const selectionSummary =
+    selectedCount === 0
+      ? { text: "Select a note to get started", tone: "muted" }
+      : selectedCount === 1
+        ? { text: "1 note selected", tone: "muted" }
+        : { text: `${selectedCount} notes selected`, tone: "accent" }
 
   return (
     <aside className="flex h-full min-h-0 flex-col rounded-2xl border border-[#e7eaf3] bg-white shadow-sm">
@@ -104,29 +112,34 @@ export default function ContentPicker({
         ) : (
           <ul className="space-y-1.5">
             {filtered.map((m) => {
-              const active = m.id === activeMaterialId
+              const checked = selectedMaterialIds.has(m.id)
               const count = questionCounts?.get(m.id) || 0
               return (
                 <li key={m.id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelectMaterial(m)}
-                    className={`group flex w-full flex-col rounded-xl border px-3 py-2.5 text-left transition ${
-                      active
+                  <label
+                    className={`group flex w-full cursor-pointer flex-col rounded-xl border px-3 py-2.5 transition ${
+                      checked
                         ? "border-[#6562f1] bg-[#f1efff]"
                         : "border-transparent bg-white hover:border-[#e7eaf3] hover:bg-[#fafbff]"
                     }`}
                   >
                     <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => onToggleMaterial(m)}
+                        aria-label={`Select ${m.title || "note"}`}
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#cfd5e6] text-[#6562f1] focus:ring-[#6562f1]/30"
+                      />
                       <FileText
                         className={`mt-0.5 h-4 w-4 shrink-0 ${
-                          active ? "text-[#5f4ce6]" : "text-[#7d86a5]"
+                          checked ? "text-[#5f4ce6]" : "text-[#7d86a5]"
                         }`}
                       />
                       <div className="min-w-0 flex-1">
                         <p
                           className={`truncate text-sm font-semibold ${
-                            active ? "text-[#5f4ce6]" : "text-[#1a2341]"
+                            checked ? "text-[#5f4ce6]" : "text-[#1a2341]"
                           }`}
                         >
                           {m.title || "Untitled"}
@@ -136,7 +149,7 @@ export default function ContentPicker({
                         </p>
                       </div>
                     </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-6 text-[11px] text-[#8a93ad]">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-10 text-[11px] text-[#8a93ad]">
                       {m.category?.title ? (
                         <span className="rounded-full bg-[#eef1f7] px-2 py-0.5 font-medium text-[#5d6580]">
                           {m.category.title}
@@ -149,13 +162,23 @@ export default function ContentPicker({
                       ) : null}
                       <span className="ml-auto">{relative(m.updated_at)}</span>
                     </div>
-                  </button>
+                  </label>
                 </li>
               )
             })}
           </ul>
         )}
       </div>
+
+      <footer className="shrink-0 border-t border-[#eef1f7] px-3 py-2.5">
+        <p
+          className={`text-xs font-medium ${
+            selectionSummary.tone === "accent" ? "text-[#5f4ce6]" : "text-[#7f88a6]"
+          }`}
+        >
+          {selectionSummary.text}
+        </p>
+      </footer>
     </aside>
   )
 }
