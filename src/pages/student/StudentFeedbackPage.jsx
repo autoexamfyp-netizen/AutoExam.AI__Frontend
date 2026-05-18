@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { MessageSquareText, Sparkles, Target, ThumbsDown, ThumbsUp, TriangleAlert } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import { fetchStudentDashboard } from "../../services/dashboardService"
-import { fetchSubmissionDetail } from "../../services/teacherSubmissionService"
+import { fetchStudentSubmissionDetail } from "../../services/studentExamService"
 import { displayExamTitle } from "../../utils/examTitle"
 
 function formatReportDate(value) {
@@ -169,7 +169,18 @@ export default function StudentFeedbackPage() {
         }
 
         const latest = graded[0]
-        const detail = await fetchSubmissionDetail(latest.submission.id)
+        const submissionId = latest.submission?.id
+        if (!submissionId) {
+          throw new Error("No graded submission found yet.")
+        }
+
+        let detail = null
+        try {
+          detail = await fetchStudentSubmissionDetail(submissionId)
+        } catch (detailError) {
+          console.warn("[warning] Could not load submission detail:", detailError?.message)
+        }
+
         if (!cancelled) {
           setData(buildFeedbackFromSubmission(latest, detail))
           setError("")
@@ -187,11 +198,24 @@ export default function StudentFeedbackPage() {
     }
   }, [])
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="min-w-0 max-w-full">
-        {error ? <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{error}</div> : null}
         <SectionSkeleton rows={6} />
+      </div>
+    )
+  }
+
+  if (error || !data) {
+    return (
+      <div className="min-w-0 max-w-full space-y-4">
+        <div>
+          <h1 className="text-xl font-semibold text-[#151d3a] sm:text-2xl">Feedback</h1>
+          <p className="mt-1 text-sm text-[#7d86a5]">Insights from your graded exam attempts</p>
+        </div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {error || "No feedback is available yet."}
+        </div>
       </div>
     )
   }

@@ -21,7 +21,7 @@ const ICON = {
  * @param {() => void} [props.onDismiss]
  */
 export default function UploadProgress({ file, status, progress, error, onCancel, onRetry, onDismiss }) {
-  const type = getMaterialType(file.type)
+  const type = getMaterialType(file.type, file.name)
   const Icon = ICON[type] ?? FileText
 
   const label =

@@ -13,7 +13,14 @@ import { formatSize, materialViewUrl } from "../../services/cloudinaryService"
 const ICON = {
   pdf: FileText,
   ppt: Presentation,
+  doc: FileText,
   other: FileText,
+}
+
+const TYPE_LABEL = {
+  pdf: "PDF",
+  ppt: "Slides",
+  doc: "Doc",
 }
 
 function formatDate(iso) {
@@ -38,7 +45,7 @@ export default function MaterialCard({ material, onPreview, onRename, onMove, on
       <div className="relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden bg-[#f4f6fb] text-[#6562f1]">
         <Icon className="h-10 w-10" />
         <span className="absolute bottom-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#5f4ce6] shadow-sm">
-          {material.material_type === "ppt" ? "Slides" : material.material_type}
+          {TYPE_LABEL[material.material_type] || material.material_type}
         </span>
       </div>
 
@@ -78,12 +85,7 @@ export default function MaterialCard({ material, onPreview, onRename, onMove, on
             </button>
             {menuOpen ? (
               <>
-                <button
-                  type="button"
-                  aria-label="Close menu"
-                  onClick={closeMenu}
-                  className="fixed inset-0 z-10 cursor-default"
-                />
+                <div role="presentation" aria-hidden="true" onClick={closeMenu} className="fixed inset-0 z-10 cursor-default" />
                 <div
                   role="menu"
                   className="absolute bottom-full right-0 z-20 mb-1 w-44 overflow-hidden rounded-xl border border-[#e7eaf3] bg-white py-1 text-sm shadow-[0_8px_30px_rgba(15,23,48,0.12)]"
@@ -153,3 +155,5 @@ export default function MaterialCard({ material, onPreview, onRename, onMove, on
     </article>
   )
 }
+
+

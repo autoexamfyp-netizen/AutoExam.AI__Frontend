@@ -33,3 +33,10 @@ export async function submitExam(submissionId, body = {}) {
   console.log("📊 Updating dashboard statistics")
   return out
 }
+
+/** Student's own submission detail (answers + grader remarks). */
+export async function fetchStudentSubmissionDetail(submissionId) {
+  if (!submissionId) throw new Error("Submission id is required.")
+  const out = await apiGet(`/api/student/submissions/${submissionId}`)
+  return out
+}

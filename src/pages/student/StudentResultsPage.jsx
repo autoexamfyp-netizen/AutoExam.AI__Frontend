@@ -5,7 +5,7 @@ import StableChartBox from "../../components/ui/StableChartBox"
 import { Award, CheckCircle2, XCircle } from "lucide-react"
 import SectionSkeleton from "../../components/ui/SectionSkeleton"
 import { fetchStudentDashboard } from "../../services/dashboardService"
-import { fetchSubmissionDetail } from "../../services/teacherSubmissionService"
+import { fetchStudentSubmissionDetail } from "../../services/studentExamService"
 import { displayExamTitle } from "../../utils/examTitle"
 
 function formatAttemptedAt(value) {
@@ -89,7 +89,7 @@ export default function StudentResultsPage() {
             const submissionId = entry.submission?.id
             if (!submissionId) return null
             try {
-              return await fetchSubmissionDetail(submissionId)
+              return await fetchStudentSubmissionDetail(submissionId)
             } catch (detailError) {
               console.warn("[warning] Could not load submission detail:", detailError?.message)
               return null

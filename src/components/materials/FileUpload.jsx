@@ -10,7 +10,7 @@ import { saveMaterial } from "../../services/materialService"
 import UploadProgress from "./UploadProgress"
 
 /**
- * Modal upload flow for PDF and PowerPoint (PPT/PPTX).
+ * Modal upload flow for PDF, Word (DOC/DOCX), and PowerPoint.
  * Controlled via `open` / `onClose` from the materials page.
  *
  * @param {object} props
@@ -120,7 +120,7 @@ export default function FileUpload({
           fileUrl: result.secure_url,
           publicId: result.public_id,
           resourceType: result.resource_type,
-          materialType: getMaterialType(item.file.type),
+          materialType: getMaterialType(item.file.type, item.file.name),
           mimeType: item.file.type,
           sizeBytes: result.bytes ?? item.file.size,
           originalFilename: result.original_filename,
@@ -325,7 +325,7 @@ export default function FileUpload({
                   : `Drag & drop files into "${selectedCategory?.title}"`}
             </p>
             <p className="mt-1 text-xs text-[#7f88a6]">
-              or <span className="font-medium text-[#6562f1]">click to browse</span> · PDF or PowerPoint (PPT/PPTX)
+              or <span className="font-medium text-[#6562f1]">click to browse</span> · PDF, Word (DOC/DOCX), or PowerPoint
             </p>
             <input
               id={inputId}

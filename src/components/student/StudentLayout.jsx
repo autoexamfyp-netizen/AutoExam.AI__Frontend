@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { NavLink, Outlet, useNavigate } from "react-router-dom"
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom"
 import { BarChart3, BookOpenCheck, GraduationCap, LayoutDashboard, LogOut, Menu, MessageSquareText, Trophy, X } from "lucide-react"
 import { useAuth } from "../../hooks/useAuth"
 
@@ -118,17 +118,15 @@ export default function StudentLayout() {
               >
                 <Menu className="h-5 w-5" />
               </button>
-              <div className="min-w-0">
-                <p className="truncate text-xs font-medium uppercase tracking-wider text-[#9aa3c2]">Student</p>
-                <p className="truncate text-sm font-semibold text-[#151d3a]">Learning workspace</p>
-              </div>
+              <p className="truncate text-sm font-semibold text-[#151d3a] sm:text-base">Student Portal</p>
             </div>
-            <div className="hidden min-w-0 items-center gap-2 rounded-full border border-[#e8ebf4] bg-white px-2 py-1 sm:flex">
-              <div className="grid h-8 w-8 place-items-center rounded-full bg-[#eaf7f2] text-xs font-semibold text-[#2e8f66]">
-                {userName.charAt(0).toUpperCase()}
-              </div>
-              <span className="max-w-[140px] truncate pr-2 text-sm font-medium text-[#21294a]">{userName}</span>
-            </div>
+            <Link
+              to="/student-dashboard/exams"
+              className="inline-flex h-10 shrink-0 items-center rounded-xl bg-[#6562f1] px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5a56e2] sm:px-4"
+            >
+              <span className="hidden sm:inline">Attempt exam</span>
+              <span className="sm:hidden">Exams</span>
+            </Link>
           </header>
 
           <main className="box-border min-w-0 w-full max-w-full flex-1 overflow-x-hidden px-4 pb-4 pt-16 sm:px-6 sm:pb-6 lg:px-8 lg:pb-8">

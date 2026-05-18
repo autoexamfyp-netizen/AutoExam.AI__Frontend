@@ -28,7 +28,7 @@ import {
   renameMaterial,
 } from "../../services/materialService"
 
-const LIBRARY_TYPES = new Set(["pdf", "ppt"])
+const LIBRARY_TYPES = new Set(["pdf", "ppt", "doc"])
 
 const ALL_ID = CategorySidebar.ALL_ID
 
@@ -436,7 +436,8 @@ export default function TeacherMaterialsPage() {
                   {[
                     { id: "all", label: "All" },
                     { id: "pdf", label: "PDFs" },
-                    { id: "ppt", label: "Slides (PPT)" },
+                    { id: "doc", label: "Docs" },
+                    { id: "ppt", label: "Slides" },
                   ].map((opt) => (
                     <button
                       key={opt.id}
@@ -479,8 +480,8 @@ export default function TeacherMaterialsPage() {
                 </p>
                 <p className="mt-2 max-w-md text-sm leading-relaxed text-[#7d86a5]">
                   {activeId === ALL_ID
-                    ? "Select a subject from the left and upload your PDFs or PowerPoint slides using the Add Materials button above."
-                    : `Select this subject and upload your PDFs or PowerPoint slides using the Add Materials button above.`}
+                    ? "Select a subject from the left and upload PDFs, Word documents, or PowerPoint slides using Add materials above."
+                    : `Select this subject and upload PDFs, Word documents, or PowerPoint slides using Add materials above.`}
                 </p>
               </div>
             ) : (

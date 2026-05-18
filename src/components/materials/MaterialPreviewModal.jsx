@@ -1,12 +1,17 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ExternalLink, X } from "lucide-react"
-import { materialViewUrl, pptEmbedUrl } from "../../services/cloudinaryService"
+import {
+  inferMaterialType,
+  materialViewUrl,
+  officeEmbedUrl,
+  resolveMaterialViewUrl,
+} from "../../services/cloudinaryService"
 
-/**
- * Preview modal for PDF (inline) and PowerPoint (Office Online embed).
- * Always exposes an "Open original" link for a new-tab fallback.
- */
 export default function MaterialPreviewModal({ material, onClose }) {
+  const [viewUrl, setViewUrl] = useState("")
+  const [urlError, setUrlError] = useState("")
+  const [urlLoading, setUrlLoading] = useState(false)
+
   useEffect(() => {
     if (!material) return
     const onKey = (e) => {
@@ -16,17 +21,49 @@ export default function MaterialPreviewModal({ material, onClose }) {
     return () => window.removeEventListener("keydown", onKey)
   }, [material, onClose])
 
-  const viewUrl = useMemo(() => (material ? materialViewUrl(material) : ""), [material])
+  useEffect(() => {
+    if (!material) {
+      setViewUrl("")
+      setUrlError("")
+      return
+    }
+    let cancelled = false
+    setUrlLoading(true)
+    setUrlError("")
+    resolveMaterialViewUrl(material)
+      .then((url) => {
+        if (!cancelled && url) setViewUrl(url)
+      })
+      .catch((e) => {
+        if (!cancelled) setUrlError(e?.message || "Could not load preview URL")
+      })
+      .finally(() => {
+        if (!cancelled) setUrlLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [material])
 
-  const isPdf = material?.material_type === "pdf"
-  const isPpt = material?.material_type === "ppt"
+  const resolvedType = inferMaterialType(material)
+  const isPdf = resolvedType === "pdf"
+  const isPpt = resolvedType === "ppt"
+  const isDoc = resolvedType === "doc"
+  const usesOfficeEmbed = isPpt || isDoc
+  const canEmbed = isPdf || usesOfficeEmbed
 
   const embedSrc = useMemo(() => {
     if (!viewUrl) return ""
-    if (isPdf) return viewUrl
-    if (isPpt) return pptEmbedUrl(viewUrl)
+    if (usesOfficeEmbed) return officeEmbedUrl(viewUrl)
     return viewUrl
-  }, [viewUrl, isPdf, isPpt])
+  }, [viewUrl, usesOfficeEmbed])
+
+  const typeLabel = useMemo(() => {
+    if (!material) return ""
+    if (isPpt) return "SLIDES"
+    if (isDoc) return "DOCUMENT"
+    return (material.material_type || "file").toUpperCase()
+  }, [material, isPpt, isDoc])
 
   if (!material) return null
 
@@ -47,7 +84,7 @@ export default function MaterialPreviewModal({ material, onClose }) {
         <header className="flex items-center justify-between gap-3 border-b border-[#eef1f7] px-4 py-3 sm:px-5">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-[#151d3a]">{material.title}</p>
-            <p className="text-xs text-[#7f88a6]">{isPpt ? "SLIDES" : material.material_type.toUpperCase()}</p>
+            <p className="text-xs text-[#7f88a6]">{typeLabel}</p>
           </div>
           <div className="flex items-center gap-1.5">
             <a
@@ -70,16 +107,41 @@ export default function MaterialPreviewModal({ material, onClose }) {
         </header>
 
         <div className="flex min-h-[320px] flex-1 flex-col overflow-hidden bg-[#f4f6fb] p-3">
-          {isPdf || isPpt ? (
+          {urlError ? (
+            <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              {urlError}. Try{" "}
+              <a href={viewUrl} target="_blank" rel="noreferrer" className="font-semibold underline">
+                Open original
+              </a>
+              .
+            </p>
+          ) : null}
+          {urlLoading ? (
+            <div className="flex flex-1 items-center justify-center text-sm text-[#7f88a6]">Loading preview…</div>
+          ) : canEmbed && embedSrc ? (
             <>
-              <iframe
-                src={embedSrc}
-                title={material.title}
-                className="min-h-[min(75vh,720px)] w-full flex-1 rounded-xl border border-[#e7eaf3] bg-white"
-              />
-              {isPpt ? (
+              {isPdf ? (
+                <object
+                  data={embedSrc}
+                  type="application/pdf"
+                  className="min-h-[min(75vh,720px)] w-full flex-1 rounded-xl border border-[#e7eaf3] bg-white"
+                >
+                  <iframe
+                    src={embedSrc}
+                    title={material.title}
+                    className="min-h-[min(75vh,720px)] h-full w-full rounded-xl bg-white"
+                  />
+                </object>
+              ) : (
+                <iframe
+                  src={embedSrc}
+                  title={material.title}
+                  className="min-h-[min(75vh,720px)] w-full flex-1 rounded-xl border border-[#e7eaf3] bg-white"
+                />
+              )}
+              {usesOfficeEmbed || isPdf ? (
                 <p className="mt-2 text-center text-xs text-[#7f88a6]">
-                  Slides load via Microsoft Office Online. If preview is blank, use{" "}
+                  If preview is blank, use{" "}
                   <a href={viewUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#6562f1] underline">
                     Open original
                   </a>

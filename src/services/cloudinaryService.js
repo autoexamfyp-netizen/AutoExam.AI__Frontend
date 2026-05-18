@@ -1,3 +1,5 @@
+import { apiGet } from "./apiClient"
+
 /**
  * Cloudinary upload service (browser, unsigned).
  *
@@ -15,21 +17,70 @@ export const ALLOWED_MIME = {
     "application/vnd.ms-powerpoint",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ],
+  doc: [
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ],
 }
 
-const FLAT_ALLOWED = [...ALLOWED_MIME.pdf, ...ALLOWED_MIME.ppt]
+const EXT_TO_MIME = {
+  pdf: "application/pdf",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+const FLAT_ALLOWED = [...ALLOWED_MIME.pdf, ...ALLOWED_MIME.ppt, ...ALLOWED_MIME.doc]
 
 export const ACCEPT_ATTR =
-  ".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  ".pdf,.ppt,.pptx,.doc,.docx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+/**
+ * Infer MIME from extension when the browser leaves file.type empty (common for .docx).
+ * @param {string} filename
+ */
+export function mimeFromFilename(filename) {
+  const ext = String(filename || "")
+    .split(".")
+    .pop()
+    ?.toLowerCase()
+  return ext && EXT_TO_MIME[ext] ? EXT_TO_MIME[ext] : ""
+}
 
 /**
  * Returns a normalized "material_type" for a given file mime type.
  * @param {string} mime
- * @returns {"pdf"|"ppt"|"other"}
+ * @param {string} [filename]
+ * @returns {"pdf"|"ppt"|"doc"|"other"}
  */
-export function getMaterialType(mime) {
-  if (ALLOWED_MIME.pdf.includes(mime)) return "pdf"
-  if (ALLOWED_MIME.ppt.includes(mime)) return "ppt"
+export function getMaterialType(mime, filename) {
+  const resolved = mime || mimeFromFilename(filename)
+  if (ALLOWED_MIME.pdf.includes(resolved)) return "pdf"
+  if (ALLOWED_MIME.ppt.includes(resolved)) return "ppt"
+  if (ALLOWED_MIME.doc.includes(resolved)) return "doc"
+  return "other"
+}
+
+/**
+ * Resolve type from DB row or filename/URL (older rows may lack material_type).
+ * @param {{ material_type?: string, original_filename?: string, title?: string, file_url?: string, public_id?: string }} material
+ * @returns {"pdf"|"ppt"|"doc"|"other"}
+ */
+export function inferMaterialType(material) {
+  const stored = material?.material_type
+  if (stored === "pdf" || stored === "ppt" || stored === "doc") return stored
+  const hint = [
+    material?.original_filename,
+    material?.title,
+    material?.public_id,
+    material?.file_url,
+  ]
+    .filter(Boolean)
+    .join(" ")
+  if (/\.pdf(\?|#|$)/i.test(hint)) return "pdf"
+  if (/\.pptx?(\?|#|$)/i.test(hint)) return "ppt"
+  if (/\.docx?(\?|#|$)/i.test(hint)) return "doc"
   return "other"
 }
 
@@ -41,9 +92,13 @@ export function getMaterialType(mime) {
 export function validateFile(file) {
   if (!file) return { ok: false, error: "No file selected" }
 
-  if (!FLAT_ALLOWED.includes(file.type)) {
+  const mime = file.type || mimeFromFilename(file.name)
+  if (!FLAT_ALLOWED.includes(mime)) {
     console.error("❌ Invalid File Type:", file.type, file.name)
-    return { ok: false, error: "Unsupported file type. Allowed: PDF and PowerPoint (PPT/PPTX)." }
+    return {
+      ok: false,
+      error: "Unsupported file type. Allowed: PDF, Word (DOC/DOCX), and PowerPoint (PPT/PPTX).",
+    }
   }
 
   const maxBytes = MAX_MB * 1024 * 1024
@@ -106,6 +161,7 @@ export function uploadToCloudinary(file, opts = {}) {
   const form = new FormData()
   form.append("file", file)
   form.append("upload_preset", UPLOAD_PRESET)
+  // access_mode must be set on the upload preset in Cloudinary (unsigned uploads cannot pass it).
   if (folder) form.append("folder", folder)
 
   console.log("☁️ Uploading to Cloudinary (raw)...", { name: file.name, type: file.type, bytes: file.size })
@@ -196,7 +252,8 @@ export function deliveryUrl(secureUrl, opts = {}) {
   const isDocument =
     materialType === "pdf" ||
     materialType === "ppt" ||
-    /\.(pdf|pptx?)(\?|#|$)/i.test(url)
+    materialType === "doc" ||
+    /\.(pdf|pptx?|docx?)(\?|#|$)/i.test(url)
 
   if (isDocument) {
     if (url.includes("/image/upload/")) url = url.replace("/image/upload/", "/raw/upload/")
@@ -218,9 +275,47 @@ export function materialViewUrl(material) {
   })
 }
 
-/** Office Online embed for PowerPoint files (public Cloudinary URL required). */
-export function pptEmbedUrl(viewUrl) {
+/**
+ * Resolve a preview-safe URL (signed via backend when configured).
+ * @param {{ id?: string, file_url?: string, resource_type?: string, material_type?: string }} material
+ */
+export async function resolveMaterialViewUrl(material) {
+  if (!material) return ""
+  const direct = materialViewUrl(material)
+  if (!material.id || !direct) return direct
+
+  try {
+    const out = await apiGet(`/api/materials/${material.id}/view-url`)
+    const fromApi = out?.url
+    // Only replace the direct URL when the API returns a versioned Cloudinary path.
+    if (fromApi && /\/upload\/v\d+\//.test(fromApi)) return fromApi
+  } catch (e) {
+    console.warn("[warning] View URL API failed, using stored file_url:", e?.message)
+  }
+  return direct
+}
+
+/** Office Online embed for PowerPoint / Word (URL must be reachable by Microsoft). */
+export function officeEmbedUrl(viewUrl) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(viewUrl)}`
+}
+
+/** @deprecated Use officeEmbedUrl */
+export function pptEmbedUrl(viewUrl) {
+  return officeEmbedUrl(viewUrl)
+}
+
+/**
+ * PDF preview src — use the delivery URL directly in an iframe/object (browser native PDF viewer).
+ * @param {string} viewUrl
+ */
+export function pdfPreviewSrc(viewUrl) {
+  return viewUrl
+}
+
+/** @deprecated Use pdfPreviewSrc — Google gview often cannot fetch Cloudinary URLs. */
+export function pdfEmbedUrl(viewUrl) {
+  return pdfPreviewSrc(viewUrl)
 }
 
 /** @deprecated Use materialViewUrl — fl_inline breaks PDF preview on Cloudinary. */
